@@ -1,30 +1,33 @@
 {
-  "current_focus": "content, crowdworks",
-  "reasoning": "iteration1の初期段階。トレンドキーワード活用でcontentの質向上を図り、同時にcrowdworksで初収益化を目指す。",
+  "current_focus": "crowdworks, content",
+  "reasoning": "iteration2で未だ収益ゼロ。crowdworksで即金化を優先し、contentで信頼度UP。",
   "week_goals": {
     "note_articles": 14,
     "x_posts": 56
   },
   "performance_notes": [],
-  "last_updated": "2026-03-11T18:43:03.139741",
-  "iteration": 2,
-  "primary_niche": "AI自動化ビジネス・ChatGPT活用による副業・効率化ノウハウ",
+  "last_updated": "2026-03-11T19:08:33.718254",
+  "iteration": 3,
+  "primary_niche": "AI活用による副業・クラウドソーシング・自動化ビジネス",
   "content_themes": [
-    "AIを使った自動収入構築の実体験レポート",
-    "ChatGPT/自動化ツールの実践的な使い方",
-    "初心者向けAI副業ガイド（月5万円達成ロードマップ）",
-    "クラウドワークス・Boothでの販売テクニック解説",
-    "自律型AIビジネスの失敗例と改善策"
+    "ChatGPTを使った案件獲得術",
+    "クラウドワークスで月5万稼ぐ方法",
+    "AIライティングの実践テクニック",
+    "初心者向けAI副業ロードマップ",
+    "提案文作成の自動化事例集"
   ],
   "proposal_keywords": [
-    "AI自動化システム構築",
-    "ChatGPT活用マニュアル作成",
-    "副業ノウハウ記事執筆"
+    "AI副業",
+    "クラウドワークス攻略",
+    "ChatGPT活用",
+    "自動提案システム",
+    "高単価案件獲得"
   ],
-  "target_budget_min": 3000,
+  "target_budget_min": 10000,
   "intensify_channels": [
     "crowdworks",
+    "note",
     "booth"
   ],
-  "auto_updated_at": "2026-03-11T18:43:15.295741"
+  "auto_updated_at": "2026-03-11T19:08:49.765009"
 }
