@@ -179,16 +179,23 @@ def handle_command(command: str, config: dict) -> str:
 
     elif cmd_lower in ("提案", "proposals"):
         proposals = load_memory_file("proposals.json")
-        items = proposals.get("proposals", []) if isinstance(proposals, dict) else []
+        items = proposals.get("applied", []) if isinstance(proposals, dict) else []
         if not items:
             return "📋 まだ提案文はありません。\n次の定時実行で生成されます。"
         latest = items[-1]
-        title = latest.get("job_title", "不明")[:30]
-        return (
-            f"📋 最新の提案文:\n{title}\n\n"
-            f"合計 {len(items)} 件生成済み\n"
-            "proposals/ フォルダを確認してください。"
-        )
+        title = latest.get("job_title", "不明")
+        text = latest.get("proposal_text", "（本文なし）")
+        url = latest.get("job_url", "")
+        price = latest.get("estimated_price", "")
+        days = latest.get("estimated_days", "")
+        msg = f"📋 最新の提案文（全{len(items)}件）\n\n"
+        msg += f"【案件】{title}\n"
+        if price:
+            msg += f"【金額】{price}　【納期】{days}\n"
+        if url:
+            msg += f"【URL】{url}\n"
+        msg += f"\n{text[:1000]}"
+        return msg
 
     elif cmd_lower in ("ヘルプ", "help", "h", "?"):
         return (
