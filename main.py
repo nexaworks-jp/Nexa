@@ -17,7 +17,7 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator
+from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver
 from publishers import note_publisher, x_publisher, crowdworks_publisher, gmail_outreach, line_notifier
 import risk_manager
 
@@ -214,7 +214,7 @@ def print_report(earnings: dict, strategy: dict, proposals_memory: dict):
 
 # ==================== メイン ====================
 
-def run(dry_run: bool = False, report_only: bool = False):
+def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
     print(f"\n{'='*52}")
     print(f"  自律型AIカンパニー 起動")
     print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -325,6 +325,16 @@ def run(dry_run: bool = False, report_only: bool = False):
     strategy["last_updated"] = datetime.now().isoformat()
     strategy["iteration"] = strategy.get("iteration", 0) + 1
 
+    # Step 5: 自己改善分析（戦略自動更新）
+    print("\n[Step 5] 自己改善分析...")
+    memory_snapshot = {
+        "earnings": earnings, "risk_state": risk_state,
+        "strategy": strategy, "proposals": proposals_memory
+    }
+    improve_result = self_improver.run(config, all_results, memory_snapshot, weekly=weekly)
+    if improve_result.get("updated_strategy"):
+        strategy.update(improve_result["updated_strategy"])
+
     save_memory("published.json", published)
     save_memory("strategy.json", strategy)
     save_memory("earnings.json", earnings)
@@ -363,5 +373,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="自律型AIカンパニー")
     parser.add_argument("--dry-run", action="store_true", help="実際には投稿・送信せずにテスト実行")
     parser.add_argument("--report", action="store_true", help="収益レポートを表示")
+    parser.add_argument("--weekly", action="store_true", help="週次実行（新モジュール生成含む）")
     args = parser.parse_args()
-    run(dry_run=args.dry_run, report_only=args.report)
+    run(dry_run=args.dry_run, report_only=args.report, weekly=args.weekly)

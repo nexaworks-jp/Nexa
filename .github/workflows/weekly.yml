@@ -1,0 +1,74 @@
+name: Weekly AI Improvement
+
+on:
+  schedule:
+    # 毎週日曜 9:00 JST (0:00 UTC)
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  weekly-improve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Create config.json from secrets
+        run: |
+          cat > config.json << 'EOF'
+          {
+            "anthropic_api_key": "${{ secrets.ANTHROPIC_API_KEY }}",
+            "note": {
+              "email": "${{ secrets.NOTE_EMAIL }}",
+              "password": "${{ secrets.NOTE_PASSWORD }}"
+            },
+            "x_twitter": {
+              "api_key": "${{ secrets.X_API_KEY }}",
+              "api_secret": "${{ secrets.X_API_SECRET }}",
+              "access_token": "${{ secrets.X_ACCESS_TOKEN }}",
+              "access_token_secret": "${{ secrets.X_ACCESS_TOKEN_SECRET }}",
+              "bearer_token": "${{ secrets.X_BEARER_TOKEN }}"
+            },
+            "line": {
+              "channel_access_token": "${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}",
+              "channel_secret": "${{ secrets.LINE_CHANNEL_SECRET }}",
+              "user_id": "${{ secrets.LINE_USER_ID }}"
+            },
+            "settings": {
+              "dry_run": false,
+              "note_post_per_day": 2,
+              "x_post_per_day": 8,
+              "primary_niche": "AI活用術・副業・節約",
+              "language": "ja"
+            }
+          }
+          EOF
+
+      - name: Run weekly improvement (with new module generation)
+        run: python main.py --weekly
+
+      - name: Apply new modules
+        run: python apply_new_modules.py
+
+      - name: Commit all improvements
+        run: |
+          git config --local user.email "ai-company[bot]@users.noreply.github.com"
+          git config --local user.name "AI Company Bot"
+          git add memory/
+          git add proposals/
+          git add workers/auto_*.py 2>/dev/null || true
+          git diff --staged --quiet || git commit -m "🤖 Weekly improvement $(date +'%Y-%m-%d')"
+          git push

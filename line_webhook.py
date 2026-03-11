@@ -197,12 +197,33 @@ def handle_command(command: str, config: dict) -> str:
         msg += f"\n{text[:1000]}"
         return msg
 
+    elif cmd_lower in ("改善", "improve", "i"):
+        if GITHUB_TOKEN and GITHUB_REPO:
+            url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/proposals/improvements.md"
+            try:
+                resp = requests.get(
+                    url,
+                    headers={"Authorization": f"token {GITHUB_TOKEN}"},
+                    timeout=10
+                )
+                if resp.status_code == 200:
+                    import base64 as b64
+                    content = b64.b64decode(resp.json()["content"]).decode("utf-8")
+                    sections = content.split("\n## ")
+                    if len(sections) >= 2:
+                        latest = "## " + sections[1][:600]
+                        return f"📈 最新の改善分析\n\n{latest}"
+            except Exception:
+                pass
+        return "📈 改善分析はまだありません。\n次の定時実行後に生成されます。"
+
     elif cmd_lower in ("ヘルプ", "help", "h", "?"):
         return (
             "🤖 AIカンパニー コマンド一覧\n\n"
             "📊 レポート - 収益・状態を表示\n"
             "🛡️ リスク - リスク状態を表示\n"
             "📋 提案 - 最新の提案文を確認\n"
+            "📈 改善 - 最新の改善分析を表示\n"
             "⏸️ 停止 - 全モジュールを停止\n"
             "▶️ 再開 - 全モジュールを再開\n"
             "❓ ヘルプ - このメッセージ"
