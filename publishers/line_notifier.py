@@ -158,6 +158,31 @@ def notify_saas_idea(config: dict, idea: dict):
     )
 
 
+def notify_weekly_improvement(config: dict, improvements: dict, new_modules: list):
+    """週次改善完了通知"""
+    line = config.get("line", {})
+    summary = improvements.get("weekly_summary", "")
+    items = improvements.get("improvements", [])
+    opportunities = improvements.get("new_opportunities", [])
+
+    lines = [f"🔧 週次自動改善が完了しました\n{datetime.now().strftime('%m月%d日')}\n"]
+    if summary:
+        lines.append(f"📝 {summary}\n")
+    if items:
+        lines.append(f"✅ 改善案 {len(items)}件を適用")
+    if opportunities:
+        best = opportunities[0]
+        lines.append(f"💡 新機会: {best.get('name', '')} (推定¥{best.get('estimated_monthly_jpy', 0):,}/月)")
+    if new_modules:
+        lines.append(f"🆕 新モジュール {len(new_modules)}個を自動追加")
+    lines.append("\n次回の改善: 来週日曜 9:00")
+    text(
+        line.get("channel_access_token", ""),
+        line.get("user_id", ""),
+        "\n".join(lines)
+    )
+
+
 def notify_cost_warning(config: dict, cost_usd: float, limit_usd: float):
     """API費用警告"""
     line = config.get("line", {})

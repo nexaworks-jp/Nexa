@@ -334,6 +334,10 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
     improve_result = self_improver.run(config, all_results, memory_snapshot, weekly=weekly)
     if improve_result.get("updated_strategy"):
         strategy.update(improve_result["updated_strategy"])
+    if weekly and not dry_run and improve_result.get("analysis"):
+        from apply_new_modules import apply_new_modules
+        new_modules = apply_new_modules()
+        line_notifier.notify_weekly_improvement(config, improve_result["analysis"], new_modules)
 
     save_memory("published.json", published)
     save_memory("strategy.json", strategy)
