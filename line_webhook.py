@@ -26,7 +26,7 @@ PORT = int(os.environ.get("PORT", 8000))
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
-GITHUB_REPO = os.environ.get("GITHUB_REPO", "nexaworks/ai-company")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "nexaworks-jp/Nexa")
 
 
 def load_config() -> dict:
