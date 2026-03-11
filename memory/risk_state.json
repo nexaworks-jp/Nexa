@@ -1,0 +1,12 @@
+{
+  "api_cost_today_usd": 0.0,
+  "api_cost_month_usd": 0.0,
+  "proposals_today": 0,
+  "date": "2026-03-11",
+  "month": "2026-03",
+  "consecutive_errors": {},
+  "paused_modules": {},
+  "total_runs": 0,
+  "last_run": null,
+  "error_log": []
+}

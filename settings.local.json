@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd \"/c/Users/2daim/OneDrive/Desktop/時給/ai-company\" && pip install anthropic requests pytrends tweepy schedule -q 2>&1 | tail -5)",
+      "Bash(cd \"/c/Users/2daim/OneDrive/Desktop/時給/ai-company\" && python -c \"\nimport sys, json\nsys.path.insert\\(0, '.'\\)\nfrom workers import trend_analyzer, content_writer\nfrom publishers import note_publisher, x_publisher\nprint\\('Import OK'\\)\n\nwith open\\('config.json', encoding='utf-8'\\) as f:\n    config = json.load\\(f\\)\nprint\\('Config OK'\\)\n\ntrends = trend_analyzer.analyze\\(config\\)\nprint\\(f'Trends OK: {len\\(trends[\\\\\"topics\\\\\"]\\)} topics'\\)\nprint\\(f'  Sample: {trends[\\\\\"topics\\\\\"][:3]}'\\)\n\" 2>&1)",
+      "Bash(cd \"/c/Users/2daim/OneDrive/Desktop/時給/ai-company\" && PYTHONIOENCODING=utf-8 python -c \"\nimport sys, json\nsys.path.insert\\(0, '.'\\)\nfrom workers import trend_analyzer\nwith open\\('config.json', encoding='utf-8'\\) as f:\n    config = json.load\\(f\\)\ntrends = trend_analyzer.analyze\\(config\\)\nprint\\(f'トレンドOK: {len\\(trends[\\\\\"topics\\\\\"]\\)}件'\\)\nfor t in trends['topics'][:5]:\n    print\\(f'  - {t}'\\)\n\" 2>&1)",
+      "Bash(cd \"/c/Users/2daim/OneDrive/Desktop/時給/ai-company\" && PYTHONIOENCODING=utf-8 python -c \"\nimport sys\nsys.path.insert\\(0, '.'\\)\nfrom workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator\nfrom publishers import note_publisher, x_publisher, crowdworks_publisher, gmail_outreach\nprint\\('全モジュールインポート: OK'\\)\n\" 2>&1)",
+      "Bash(cd \"/c/Users/2daim/OneDrive/Desktop/時給/ai-company\" && PYTHONIOENCODING=utf-8 python main.py --report 2>&1)",
+      "Bash(cd \"/c/Users/2daim/OneDrive/Desktop/時給/ai-company\" && PYTHONIOENCODING=utf-8 python risk_manager.py --status 2>&1)"
+    ]
+  }
+}

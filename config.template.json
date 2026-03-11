@@ -1,0 +1,29 @@
+{
+  "anthropic_api_key": "YOUR_ANTHROPIC_API_KEY_HERE",
+  "line": {
+    "channel_access_token": "YOUR_LINE_CHANNEL_ACCESS_TOKEN",
+    "channel_secret": "YOUR_LINE_CHANNEL_SECRET",
+    "user_id": "YOUR_LINE_USER_ID"
+  },
+  "note": {
+    "email": "YOUR_NOTE_EMAIL",
+    "password": "YOUR_NOTE_PASSWORD"
+  },
+  "x_twitter": {
+    "api_key": "YOUR_X_API_KEY",
+    "api_secret": "YOUR_X_API_SECRET",
+    "access_token": "YOUR_X_ACCESS_TOKEN",
+    "access_token_secret": "YOUR_X_ACCESS_TOKEN_SECRET",
+    "bearer_token": "YOUR_X_BEARER_TOKEN"
+  },
+  "amazon_associate": {
+    "tag": "YOUR_AMAZON_ASSOCIATE_TAG"
+  },
+  "settings": {
+    "dry_run": false,
+    "note_post_per_day": 2,
+    "x_post_per_day": 8,
+    "primary_niche": "AI活用術・副業・節約",
+    "language": "ja"
+  }
+}
