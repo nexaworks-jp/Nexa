@@ -1,16 +1,9 @@
 """
-LINE Webhook サーバー
-LINEからのメッセージを受信してシステムを操作する
+LINE Webhook サーバー (Render.com対応版)
 
-起動方法:
-  python line_webhook.py
-
-外部公開 (ngrok使用):
-  ngrok http 8000
-  → LINE Developers Console の Webhook URL に設定
-
-デプロイ版 (Render.com / Railway):
-  このファイルをそのままデプロイ可能
+config.jsonがある場合はそこから設定を読む。
+ない場合（Render.com等）は環境変数から読む。
+メモリファイルはGitHub APIから取得する。
 """
 import json
 import os
@@ -18,7 +11,7 @@ import sys
 import hashlib
 import hmac
 import base64
-import subprocess
+import requests
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 
@@ -27,18 +20,91 @@ if sys.platform == "win32":
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 
-sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from publishers import line_notifier
-import risk_manager
+PORT = int(os.environ.get("PORT", 8000))
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-PORT = 8000
-BASE_DIR = os.path.dirname(__file__)
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "")
+GITHUB_REPO = os.environ.get("GITHUB_REPO", "nexaworks/ai-company")
 
 
 def load_config() -> dict:
-    with open(os.path.join(BASE_DIR, "config.json"), "r", encoding="utf-8-sig") as f:
-        return json.load(f)
+    """config.jsonまたは環境変数から設定を読む"""
+    config_path = os.path.join(BASE_DIR, "config.json")
+    if os.path.exists(config_path):
+        with open(config_path, "r", encoding="utf-8-sig") as f:
+            return json.load(f)
+    # 環境変数から構築（Render.com用）
+    return {
+        "line": {
+            "channel_access_token": os.environ.get("LINE_CHANNEL_ACCESS_TOKEN", ""),
+            "channel_secret": os.environ.get("LINE_CHANNEL_SECRET", ""),
+            "user_id": os.environ.get("LINE_USER_ID", ""),
+        },
+        "anthropic_api_key": os.environ.get("ANTHROPIC_API_KEY", ""),
+    }
+
+
+def load_memory_file(filename: str) -> dict:
+    """メモリファイルをローカルまたはGitHub APIから読む"""
+    local_path = os.path.join(BASE_DIR, "memory", filename)
+    if os.path.exists(local_path):
+        try:
+            with open(local_path, encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    # GitHub APIから取得（Render.com用）
+    if GITHUB_TOKEN and GITHUB_REPO:
+        url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/memory/{filename}"
+        try:
+            resp = requests.get(
+                url,
+                headers={"Authorization": f"token {GITHUB_TOKEN}"},
+                timeout=10
+            )
+            if resp.status_code == 200:
+                content = base64.b64decode(resp.json()["content"]).decode("utf-8")
+                return json.loads(content)
+        except Exception as e:
+            print(f"[Webhook] GitHub API読み込みエラー: {e}")
+    return {}
+
+
+def save_memory_to_github(filename: str, data: dict) -> bool:
+    """GitHub APIでメモリファイルを更新する（停止/再開コマンド用）"""
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        # ローカルに直接書き込み
+        local_path = os.path.join(BASE_DIR, "memory", filename)
+        try:
+            with open(local_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+            return True
+        except Exception:
+            return False
+
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/memory/{filename}"
+    headers = {"Authorization": f"token {GITHUB_TOKEN}"}
+    # 現在のSHAを取得
+    get_resp = requests.get(url, headers=headers, timeout=10)
+    sha = get_resp.json().get("sha", "") if get_resp.status_code == 200 else ""
+
+    content = base64.b64encode(
+        json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
+    ).decode("ascii")
+    payload = {
+        "message": f"🤖 webhook: update {filename}",
+        "content": content,
+    }
+    if sha:
+        payload["sha"] = sha
+    try:
+        resp = requests.put(url, headers=headers, json=payload, timeout=15)
+        return resp.status_code in (200, 201)
+    except Exception as e:
+        print(f"[Webhook] GitHub API書き込みエラー: {e}")
+        return False
 
 
 def verify_signature(body: bytes, signature: str, channel_secret: str) -> bool:
@@ -51,22 +117,13 @@ def verify_signature(body: bytes, signature: str, channel_secret: str) -> bool:
 
 
 def handle_command(command: str, config: dict) -> str:
-    """
-    LINEからのコマンドを処理して返答を返す
-    """
-    cmd = command.strip().lower()
-    line = config.get("line", {})
+    """LINEからのコマンドを処理して返答を返す"""
+    cmd = command.strip()
+    cmd_lower = cmd.lower()
 
-    # ==================== コマンド一覧 ====================
-
-    if cmd in ("レポート", "report", "r"):
-        import json as j
-        earnings_path = os.path.join(BASE_DIR, "memory", "earnings.json")
-        risk_path = os.path.join(BASE_DIR, "memory", "risk_state.json")
-        with open(earnings_path, encoding="utf-8") as f:
-            earnings = j.load(f)
-        with open(risk_path, encoding="utf-8") as f:
-            risk_state = j.load(f)
+    if cmd_lower in ("レポート", "report", "r"):
+        earnings = load_memory_file("earnings.json")
+        risk_state = load_memory_file("risk_state.json")
         total = earnings.get("total_earnings_jpy", 0)
         by_ch = earnings.get("by_channel", {})
         api_cost = risk_state.get("api_cost_month_usd", 0) * 150
@@ -75,26 +132,23 @@ def handle_command(command: str, config: dict) -> str:
         return (
             f"📊 現在のレポート\n\n"
             f"💰 累計収益: ¥{total:,}\n"
-            f"  note: ¥{by_ch.get('note',0):,}\n"
-            f"  CW: ¥{by_ch.get('crowdworks',0):,}\n\n"
+            f"  note: ¥{by_ch.get('note', 0):,}\n"
+            f"  CW: ¥{by_ch.get('crowdworks', 0):,}\n\n"
             f"⚙️ 今月のAPI費用: ¥{api_cost:.0f}\n"
-            f"🔄 総実行回数: {risk_state.get('total_runs',0)}回\n"
+            f"🔄 総実行回数: {risk_state.get('total_runs', 0)}回\n"
             f"状態: {status}"
         )
 
-    elif cmd in ("リスク", "risk"):
-        import json as j
-        risk_path = os.path.join(BASE_DIR, "memory", "risk_state.json")
-        with open(risk_path, encoding="utf-8") as f:
-            risk_state = j.load(f)
+    elif cmd_lower in ("リスク", "risk"):
+        risk_state = load_memory_file("risk_state.json")
         paused = risk_state.get("paused_modules", {})
         errors = {k: v for k, v in risk_state.get("consecutive_errors", {}).items() if v > 0}
         cost_today = risk_state.get("api_cost_today_usd", 0) * 150
         cost_month = risk_state.get("api_cost_month_usd", 0) * 150
         lines = [
             "🛡️ リスク状態\n",
-            f"本日のAPI費用: ¥{cost_today:.0f} / ¥{0.30*150:.0f}上限",
-            f"今月のAPI費用: ¥{cost_month:.0f} / ¥{5.00*150:.0f}上限",
+            f"本日のAPI費用: ¥{cost_today:.0f} / ¥45上限",
+            f"今月のAPI費用: ¥{cost_month:.0f} / ¥750上限",
         ]
         if paused:
             lines.append(f"\n⏸️ 停止中: {', '.join(paused.keys())}")
@@ -104,34 +158,39 @@ def handle_command(command: str, config: dict) -> str:
             lines.append("\n✅ 全モジュール正常")
         return "\n".join(lines)
 
-    elif cmd in ("停止", "stop", "pause"):
-        risk_state = risk_manager.load_state()
+    elif cmd_lower in ("停止", "stop", "pause"):
+        risk_state = load_memory_file("risk_state.json")
+        now = datetime.now().isoformat()
+        if "paused_modules" not in risk_state:
+            risk_state["paused_modules"] = {}
         for mod in ["note", "x", "crowdworks", "saas"]:
-            risk_state = risk_manager.record_error(risk_state, mod, "手動停止")
-            risk_state = risk_manager.record_error(risk_state, mod, "手動停止")
-            risk_state = risk_manager.record_error(risk_state, mod, "手動停止")
-        risk_manager.save_state(risk_state)
-        return "⏸️ 全モジュールを停止しました。\n再開: 「再開」と送ってください。"
+            risk_state["paused_modules"][mod] = now
+        if save_memory_to_github("risk_state.json", risk_state):
+            return "⏸️ 全モジュールを停止しました。\n次の定時実行から反映されます。\n再開: 「再開」と送ってください。"
+        return "⚠️ 停止に失敗しました。\nGitHubトークンを確認してください。"
 
-    elif cmd in ("再開", "resume", "start"):
-        risk_state = risk_manager.load_state()
+    elif cmd_lower in ("再開", "resume", "start"):
+        risk_state = load_memory_file("risk_state.json")
         risk_state["paused_modules"] = {}
         risk_state["consecutive_errors"] = {}
-        risk_manager.save_state(risk_state)
-        return "▶️ 全モジュールを再開しました。\n次の定時実行から動き始めます。"
+        if save_memory_to_github("risk_state.json", risk_state):
+            return "▶️ 全モジュールを再開しました。\n次の定時実行から動き始めます。"
+        return "⚠️ 再開に失敗しました。\nGitHubトークンを確認してください。"
 
-    elif cmd in ("提案", "proposals"):
-        proposals_dir = os.path.join(BASE_DIR, "proposals")
-        if not os.path.exists(proposals_dir):
-            return "📋 まだ提案文はありません。"
-        files = sorted(os.listdir(proposals_dir), reverse=True)
-        md_files = [f for f in files if f.endswith(".md")]
-        if not md_files:
-            return "📋 まだ提案文はありません。"
-        latest = md_files[0]
-        return f"📋 最新の提案文:\n{latest}\n\npropsals/ フォルダを確認してください。"
+    elif cmd_lower in ("提案", "proposals"):
+        proposals = load_memory_file("proposals.json")
+        items = proposals.get("proposals", []) if isinstance(proposals, dict) else []
+        if not items:
+            return "📋 まだ提案文はありません。\n次の定時実行で生成されます。"
+        latest = items[-1]
+        title = latest.get("job_title", "不明")[:30]
+        return (
+            f"📋 最新の提案文:\n{title}\n\n"
+            f"合計 {len(items)} 件生成済み\n"
+            "proposals/ フォルダを確認してください。"
+        )
 
-    elif cmd in ("ヘルプ", "help", "h", "?"):
+    elif cmd_lower in ("ヘルプ", "help", "h", "?"):
         return (
             "🤖 AIカンパニー コマンド一覧\n\n"
             "📊 レポート - 収益・状態を表示\n"
@@ -150,6 +209,17 @@ def handle_command(command: str, config: dict) -> str:
 
 
 class LineWebhookHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        """UptimeRobotのヘルスチェック用"""
+        if self.path in ("/", "/health"):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.end_headers()
+            self.wfile.write("OK - Nexa AI Company Webhook".encode("utf-8"))
+        else:
+            self.send_response(404)
+            self.end_headers()
+
     def do_POST(self):
         if self.path != "/webhook":
             self.send_response(404)
@@ -159,7 +229,6 @@ class LineWebhookHandler(BaseHTTPRequestHandler):
         content_length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_length)
 
-        # 署名検証
         config = load_config()
         channel_secret = config.get("line", {}).get("channel_secret", "")
         signature = self.headers.get("X-Line-Signature", "")
@@ -172,7 +241,6 @@ class LineWebhookHandler(BaseHTTPRequestHandler):
         self.send_response(200)
         self.end_headers()
 
-        # イベント処理
         try:
             data = json.loads(body.decode("utf-8"))
             for event in data.get("events", []):
@@ -187,14 +255,11 @@ class LineWebhookHandler(BaseHTTPRequestHandler):
                 print(f"[Webhook] 受信: {text_input}")
                 response_text = handle_command(text_input, config)
 
-                # 返信
                 line_cfg = config.get("line", {})
-                reply_url = "https://api.line.me/v2/bot/message/reply"
-                import requests
                 requests.post(
-                    reply_url,
+                    "https://api.line.me/v2/bot/message/reply",
                     headers={
-                        "Authorization": f"Bearer {line_cfg.get('channel_access_token','')}",
+                        "Authorization": f"Bearer {line_cfg.get('channel_access_token', '')}",
                         "Content-Type": "application/json"
                     },
                     json={
@@ -212,8 +277,6 @@ class LineWebhookHandler(BaseHTTPRequestHandler):
 
 def run_server():
     print(f"[Webhook] LINEウェブフックサーバー起動 port={PORT}")
-    print(f"[Webhook] ngrokで公開: ngrok http {PORT}")
-    print(f"[Webhook] Webhook URL: https://xxxx.ngrok.io/webhook")
     server = HTTPServer(("0.0.0.0", PORT), LineWebhookHandler)
     server.serve_forever()
 
