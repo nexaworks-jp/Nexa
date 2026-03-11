@@ -1,16 +1,14 @@
 """
 案件スキャナー
-CrowdWorksとLancersから自分でできそうな案件を自動で探す
+PlaywrightでCrowdWorksから案件を自動取得する
 """
-import requests
 import json
 import re
 import time
 from datetime import datetime
-from html.parser import HTMLParser
 
 
-# Claudeが得意な案件キーワード
+# 対象キーワード
 TARGET_KEYWORDS = [
     "文章作成", "ライティング", "記事作成", "ブログ", "コピーライティング",
     "翻訳", "英語", "データ入力", "リサーチ", "調査", "まとめ",
@@ -18,153 +16,167 @@ TARGET_KEYWORDS = [
     "SNS", "Instagram", "Twitter", "X投稿", "キャッチコピー",
     "商品説明", "マニュアル", "説明文", "プロフィール文", "自己PR",
     "ChatGPT", "AI", "プロンプト",
+    "WordPress", "HTML", "CSS", "Python", "スクレイピング",
     "心理学", "行動科学", "進化", "人間心理", "マーケティング", "行動経済学"
 ]
 
-# 避けるキーワード（Claudeが苦手なもの）
+# 避けるキーワード
 AVOID_KEYWORDS = [
     "電話", "テレアポ", "訪問", "対面", "出勤", "常駐", "資格必須",
     "経験必須", "実績必須", "会社員限定"
 ]
 
-
-class SimpleHTMLStripper(HTMLParser):
-    """HTMLタグを除去するシンプルなパーサー"""
-    def __init__(self):
-        super().__init__()
-        self.text_parts = []
-
-    def handle_data(self, data):
-        self.text_parts.append(data)
-
-    def get_text(self):
-        return " ".join(self.text_parts)
+# 検索する仕事カテゴリURL
+SEARCH_URLS = [
+    "https://crowdworks.jp/public/jobs/search?term=ライティング&order=new&job_type=fixed_fee",
+    "https://crowdworks.jp/public/jobs/search?term=記事作成&order=new&job_type=fixed_fee",
+    "https://crowdworks.jp/public/jobs/search?term=WordPress&order=new&job_type=fixed_fee",
+    "https://crowdworks.jp/public/jobs/search?term=リサーチ&order=new&job_type=fixed_fee",
+    "https://crowdworks.jp/public/jobs/search?term=Python&order=new&job_type=fixed_fee",
+]
 
 
-def strip_html(html: str) -> str:
-    parser = SimpleHTMLStripper()
-    parser.feed(html)
-    return parser.get_text()
-
-
-def search_crowdworks() -> list[dict]:
-    """CrowdWorksの公開案件を検索"""
+def search_crowdworks_playwright() -> list:
+    """Playwrightを使ってCrowdWorksの案件を取得"""
     jobs = []
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "Accept-Language": "ja,en-US;q=0.9"
-    }
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("[OpportunityScanner] Playwrightが未インストールです")
+        return []
 
-    # ライティング・翻訳カテゴリを検索
-    search_terms = ["文章作成", "ライティング", "記事作成", "AI"]
-    for term in search_terms:
-        try:
-            url = f"https://crowdworks.jp/public/jobs/search?term={requests.utils.quote(term)}&order=new"
-            resp = requests.get(url, headers=headers, timeout=10)
-            if resp.status_code != 200:
-                continue
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            context = browser.new_context(
+                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            )
+            page = context.new_page()
 
-            # 簡易HTML解析でジョブを抽出
-            content = resp.text
-            # job IDとタイトルを抽出（CrowdWorksのURL構造から）
-            job_urls = re.findall(r'/public/jobs/(\d+)', content)
-            titles = re.findall(r'class="job_title[^"]*"[^>]*>([^<]+)<', content)
+            for url in SEARCH_URLS:
+                try:
+                    page.goto(url, timeout=30000, wait_until="domcontentloaded")
+                    page.wait_for_timeout(3000)  # JS描画待ち
 
-            for i, job_id in enumerate(job_urls[:5]):
-                title = titles[i] if i < len(titles) else f"案件#{job_id}"
-                jobs.append({
-                    "platform": "crowdworks",
-                    "job_id": job_id,
-                    "title": strip_html(title).strip(),
-                    "url": f"https://crowdworks.jp/public/jobs/{job_id}",
-                    "search_term": term,
-                    "found_at": datetime.now().isoformat()
-                })
+                    # 案件リストを取得
+                    job_elements = page.query_selector_all("li.job_list_item, article.job, .job-item, [data-job-id]")
 
-            time.sleep(2)  # レート制限対策
+                    if not job_elements:
+                        # セレクタが合わない場合はテキストから抽出
+                        content = page.content()
+                        job_urls = re.findall(r'href="(/public/jobs/(\d+))"', content)
+                        titles = re.findall(r'class="[^"]*job_title[^"]*"[^>]*>([^<]+)<', content)
 
-        except Exception as e:
-            print(f"[OpportunityScanner] CrowdWorks検索エラー ({term}): {e}")
+                        for i, (path, job_id) in enumerate(job_urls[:10]):
+                            if job_id in [j.get("job_id") for j in jobs]:
+                                continue
+                            title = titles[i].strip() if i < len(titles) else f"案件#{job_id}"
+                            jobs.append({
+                                "platform": "crowdworks",
+                                "job_id": job_id,
+                                "title": title,
+                                "url": f"https://crowdworks.jp/public/jobs/{job_id}",
+                                "found_at": datetime.now().isoformat()
+                            })
+                    else:
+                        for el in job_elements[:10]:
+                            try:
+                                title_el = el.query_selector(".job_title, h2, h3, .title")
+                                title = title_el.inner_text().strip() if title_el else ""
+                                link_el = el.query_selector("a[href*='/public/jobs/']")
+                                href = link_el.get_attribute("href") if link_el else ""
+                                job_id_match = re.search(r'/public/jobs/(\d+)', href or "")
+                                job_id = job_id_match.group(1) if job_id_match else ""
+
+                                if job_id and title and job_id not in [j.get("job_id") for j in jobs]:
+                                    jobs.append({
+                                        "platform": "crowdworks",
+                                        "job_id": job_id,
+                                        "title": title,
+                                        "url": f"https://crowdworks.jp/public/jobs/{job_id}",
+                                        "found_at": datetime.now().isoformat()
+                                    })
+                            except Exception:
+                                continue
+
+                    print(f"[OpportunityScanner] {url.split('term=')[1].split('&')[0]}: {len(jobs)}件累計")
+                    time.sleep(2)
+
+                except Exception as e:
+                    print(f"[OpportunityScanner] URL取得エラー: {e}")
+                    continue
+
+            browser.close()
+
+    except Exception as e:
+        print(f"[OpportunityScanner] Playwrightエラー: {e}")
 
     return jobs
 
 
-def get_job_detail(platform: str, job_id: str, url: str) -> dict:
-    """案件の詳細情報を取得"""
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-    }
+def get_job_detail_playwright(url: str) -> dict:
+    """案件詳細をPlaywrightで取得"""
     try:
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            return {}
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(url, timeout=30000, wait_until="domcontentloaded")
+            page.wait_for_timeout(2000)
 
-        content = resp.text
+            content = page.content()
 
-        # 予算を抽出
-        budget_match = re.search(r'(\d[\d,]+)\s*円', content)
-        budget = budget_match.group(0) if budget_match else "要相談"
+            # 予算を抽出
+            budget_match = re.search(r'(\d[\d,]+)\s*円', content)
+            budget = budget_match.group(0) if budget_match else "要相談"
 
-        # 説明文を抽出（簡易）
-        desc_match = re.search(r'<div[^>]*class="[^"]*description[^"]*"[^>]*>(.*?)</div>',
-                               content, re.DOTALL)
-        description = strip_html(desc_match.group(1))[:500] if desc_match else ""
+            # 説明文を抽出
+            desc_match = re.search(r'<div[^>]*class="[^"]*description[^"]*"[^>]*>(.*?)</div>',
+                                   content, re.DOTALL)
+            description = re.sub(r'<[^>]+>', '', desc_match.group(1))[:500] if desc_match else ""
 
-        return {
-            "budget": budget,
-            "description": description,
-            "url": url
-        }
+            browser.close()
+            return {"budget": budget, "description": description, "url": url}
     except Exception as e:
         return {}
 
 
-def filter_suitable_jobs(jobs: list[dict]) -> list[dict]:
-    """Claudeが対応できる案件をフィルタリング"""
+def filter_suitable_jobs(jobs: list) -> list:
+    """対応できる案件をフィルタリング"""
     suitable = []
     for job in jobs:
         title = job.get("title", "").lower()
         desc = job.get("description", "").lower()
         text = title + " " + desc
 
-        # 除外キーワードチェック
         if any(kw in text for kw in AVOID_KEYWORDS):
             continue
 
-        # 対象キーワードチェック
         score = sum(1 for kw in TARGET_KEYWORDS if kw in text)
         if score > 0 or any(kw in title for kw in TARGET_KEYWORDS):
             job["match_score"] = score
             suitable.append(job)
 
-    # スコア順にソート
     suitable.sort(key=lambda x: x.get("match_score", 0), reverse=True)
     return suitable[:10]
 
 
 def scan(config: dict, already_applied: list) -> dict:
-    """
-    案件スキャンのメイン関数
-    """
+    """案件スキャンのメイン関数"""
     print("[OpportunityScanner] 案件スキャン開始...")
 
-    all_jobs = []
+    jobs = search_crowdworks_playwright()
+    print(f"[OpportunityScanner] CrowdWorks: {len(jobs)}件発見")
 
-    # CrowdWorks検索
-    cw_jobs = search_crowdworks()
-    all_jobs.extend(cw_jobs)
-    print(f"[OpportunityScanner] CrowdWorks: {len(cw_jobs)}件発見")
-
-    # 既に応募済みの案件を除外
+    # 応募済み除外
     applied_ids = [j.get("job_id") for j in already_applied]
-    new_jobs = [j for j in all_jobs if j.get("job_id") not in applied_ids]
+    new_jobs = [j for j in jobs if j.get("job_id") not in applied_ids]
 
-    # 適合する案件をフィルタリング
     suitable = filter_suitable_jobs(new_jobs)
     print(f"[OpportunityScanner] 適合案件: {len(suitable)}件")
 
     return {
-        "total_found": len(all_jobs),
+        "total_found": len(jobs),
         "suitable": suitable,
         "scanned_at": datetime.now().isoformat()
     }

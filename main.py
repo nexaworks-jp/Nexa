@@ -55,62 +55,34 @@ def save_memory(filename: str, data: dict):
 
 def ceo_decide(client: anthropic.Anthropic, state: dict) -> dict:
     """
-    CEO Agentが全チャネルのデータを見て今回の戦略を決定する
+    ルールベースでタスクを決定する（API不使用）
+    収益が発生し始めたらself_improverが自動でAPI判断に切り替える
     """
-    summary = json.dumps({
-        "earnings": state["earnings"].get("by_channel", {}),
-        "total": state["earnings"].get("total_earnings_jpy", 0),
-        "iteration": state["strategy"].get("iteration", 0),
-        "last_focus": state["strategy"].get("current_focus", ""),
-        "applied_jobs": len(state["proposals"].get("applied", [])),
-        "saas_ideas": len(state["saas"].get("saas_ideas", [])),
-        "top_trends": state["trends"].get("topics", [])[:5]
-    }, ensure_ascii=False)
-
-    response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
-        max_tokens=600,
-        messages=[{
-            "role": "user",
-            "content": f"""あなたは自律型AIカンパニーのCEOです。
-以下の現状を見て、今回の実行で何を優先するか判断してください。
-
-【現状】
-{summary}
-
-【選択肢】
-- "content": note記事+Xポスト投稿（毎回の基本）
-- "crowdworks": CrowdWorks案件スキャン + 提案文生成
-- "saas": 新SaaSアイデア生成 + LP作成 + 営業メール準備
-- "all": 全部やる（時間がかかるが最大効果）
-
-判断基準：
-- 初期（iteration 0-10）: contentとcrowdworksを交互に
-- 中期（iteration 11-30）: saasも追加
-- 収益が発生したらその手段を強化
-
-JSON形式で：
-{{
-  "tasks": ["content", "crowdworks"],
-  "reasoning": "理由（40文字以内）",
-  "intensity": "light|normal|heavy"
-}}"""
-        }]
-    )
-
-    text = response.content[0].text
-    start = text.find("{")
-    end = text.rfind("}") + 1
-    if start >= 0 and end > start:
-        return json.loads(text[start:end])
-
     iteration = state["strategy"].get("iteration", 0)
-    default_tasks = ["content"] if iteration % 2 == 0 else ["content", "crowdworks"]
-    return {
-        "tasks": default_tasks,
-        "reasoning": "デフォルト判断",
-        "intensity": "normal"
-    }
+    total_earnings = state["earnings"].get("total_earnings_jpy", 0)
+    intensify = state["strategy"].get("intensify_channels", [])
+
+    # 収益が発生したチャネルを強化（self_improverが設定）
+    if intensify and total_earnings > 0:
+        tasks = list(set(["crowdworks"] + intensify))
+        return {"tasks": tasks, "reasoning": "収益チャネル強化", "intensity": "normal"}
+
+    # ルールベース判断
+    if iteration < 30:
+        tasks = ["crowdworks", "content"] if do_content_this_run(state) else ["crowdworks"]
+    else:
+        tasks = ["crowdworks", "content", "saas"]
+
+    return {"tasks": tasks, "reasoning": "ルールベース判断", "intensity": "normal"}
+
+
+def do_content_this_run(state: dict) -> bool:
+    """コンテンツ生成をこの実行でやるか（スケジュール依存）"""
+    from datetime import datetime
+    hour = datetime.now().hour
+    strategy = state.get("strategy", {})
+    content_hour = strategy.get("api_schedule", {}).get("content_hour_utc", 21)
+    return hour == content_hour
 
 
 # ==================== タスク実行 ====================
@@ -237,8 +209,6 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
         print_report(earnings, strategy, proposals_memory)
         return
 
-    client = anthropic.Anthropic(api_key=config["anthropic_api_key"])
-
     # リスク状態ロード
     risk_state = risk_manager.load_state()
     risk_state = risk_manager.reset_daily_if_needed(risk_state)
@@ -281,10 +251,8 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
         "earnings": earnings, "strategy": strategy,
         "trends": trends, "proposals": proposals_memory, "saas": saas_memory
     }
-    decision = ceo_decide(client, state)
-    # CEOの判断をベースに、スケジュール外のタスクは除外
-    raw_tasks = decision.get("tasks", ["crowdworks"])
-    tasks = [t for t in raw_tasks if t in forced_tasks or t == "all"] or forced_tasks
+    decision = ceo_decide(None, state)
+    tasks = forced_tasks
     print(f"  → タスク: {tasks}")
     print(f"  → 理由: {decision.get('reasoning', '')}")
 
@@ -347,8 +315,8 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
     strategy["last_updated"] = datetime.now().isoformat()
     strategy["iteration"] = strategy.get("iteration", 0) + 1
 
-    # Step 5: 自己改善分析（22時 or 週次のみ）
-    if do_improve:
+    # Step 5: 自己改善分析（週次のみ）
+    if weekly:
         print("\n[Step 5] 自己改善分析...")
         memory_snapshot = {
             "earnings": earnings, "risk_state": risk_state,
@@ -369,7 +337,7 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
             new_modules = apply_new_modules()
             line_notifier.notify_weekly_improvement(config, improve_result["analysis"], new_modules)
     else:
-        print("\n[Step 5] 自己改善: 本日22時に実行予定（スキップ）")
+        print("\n[Step 5] 自己改善: 週次実行時のみ（スキップ）")
 
     save_memory("published.json", published)
     save_memory("strategy.json", strategy)
@@ -378,11 +346,9 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
     save_memory("saas.json", saas_memory)
     risk_manager.save_state(risk_state)
 
-    # LINE: 22時のみ日次レポート
-    if not dry_run and hour == improve_hour:
-        proposals_today = sum(
-            1 for r in all_results.get("crowdworks", {}).get("proposals", [])
-        )
+    # LINE: 提案が出た時のみ通知（毎回の定時通知は不要）
+    if not dry_run and all_results.get("crowdworks", {}).get("proposals"):
+        proposals_today = len(all_results["crowdworks"]["proposals"])
         line_notifier.notify_daily_report(config, earnings, risk_state, proposals_today)
 
     # サマリー
