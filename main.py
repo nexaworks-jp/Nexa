@@ -17,7 +17,7 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver
+from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, note_researcher
 from publishers import note_publisher, x_publisher, crowdworks_publisher, gmail_outreach, line_notifier
 import risk_manager
 
@@ -358,6 +358,13 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
         if improve_result.get("updated_strategy"):
             strategy.update(improve_result["updated_strategy"])
         if weekly and not dry_run and improve_result.get("analysis"):
+            # noteリサーチ（類似アカウント調査・スタイル自動更新）
+            print("\n[Step 5b] noteリサーチ・市場分析...")
+            try:
+                note_researcher.run(config)
+            except Exception as e:
+                print(f"[Main] noteリサーチエラー: {e}")
+
             from apply_new_modules import apply_new_modules
             new_modules = apply_new_modules()
             line_notifier.notify_weekly_improvement(config, improve_result["analysis"], new_modules)

@@ -69,6 +69,7 @@ jobs:
           git config --local user.name "AI Company Bot"
           git add memory/
           git add proposals/
+          git add "note用/" 2>/dev/null || true
           git add workers/auto_*.py 2>/dev/null || true
           git diff --staged --quiet || git commit -m "🤖 Weekly improvement $(date +'%Y-%m-%d')"
           git pull --rebase origin main || true

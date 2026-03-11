@@ -5,7 +5,17 @@ Claude APIを使ってnote記事とXポストを生成する
 import anthropic
 import json
 import random
+import os
 from datetime import datetime
+
+
+def load_style_reference() -> str:
+    """style_reference/evopsy.md を読み込んでスタイルガイドを返す"""
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "note用", "evopsy.md")
+    if os.path.exists(path):
+        with open(path, "r", encoding="utf-8") as f:
+            return f.read()
+    return ""
 
 
 def create_note_article(client: anthropic.Anthropic, topic: str, published_topics: list) -> dict:
@@ -14,32 +24,41 @@ def create_note_article(client: anthropic.Anthropic, topic: str, published_topic
     戻り値: { "title": str, "content": str, "price": int, "hashtags": list }
     """
     avoid = ", ".join(published_topics[-20:]) if published_topics else "なし"
+    style_guide = load_style_reference()
+
+    style_section = ""
+    if style_guide:
+        style_section = f"""
+【参考スタイルガイド（エボサイ）】
+{style_guide[:2000]}
+
+"""
 
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=3000,
         messages=[{
             "role": "user",
-            "content": f"""あなたはnote.comで人気のクリエイターです。
-以下のトピックについて、有料で売れる質の高いnote記事を書いてください。
-
+            "content": f"""あなたは進化心理学をテーマにしたnoteクリエイターです。
+以下のスタイルガイドを参考に、有料で売れる質の高いnote記事を書いてください。
+{style_section}
 トピック: {topic}
 避けるべき最近のトピック: {avoid}
 
 以下のJSON形式で出力してください：
 {{
-  "title": "記事タイトル（30文字以内、読者が思わずクリックしたくなる）",
-  "content": "記事本文（マークダウン形式、1500〜2500文字、具体的な数字や手順を含む）",
+  "title": "記事タイトル（30文字以内、「サピエンスはなぜ〜」「〜とは〜である」などエボサイ風の鋭いタイトル）",
+  "content": "記事本文（マークダウン形式、1500〜2500文字、進化心理学の視点で人間行動を分析する）",
   "price": 300,
-  "hashtags": ["ハッシュタグ1", "ハッシュタグ2", "ハッシュタグ3"],
+  "hashtags": ["進化心理学", "ハッシュタグ2", "ハッシュタグ3"],
   "summary": "記事の無料公開部分の要約（100文字）"
 }}
 
 記事は必ず：
-- 具体的な数字（例：「月3万円節約できる方法5選」）を使う
-- 読者がすぐ実践できるアクションステップを含む
-- 信頼できる情報として書く
-- 有料部分に最も価値ある情報を入れる"""
+- 日常の些細な行動・感情から入り、進化的説明に展開する
+- 「サピエンス」「われわれ」「適応」「自然選択」などのワードを使う
+- 学術的だが読みやすい文体（「〜である」断定調）
+- 有料部分に進化的洞察の核心を入れる"""
         }]
     )
 
@@ -82,21 +101,23 @@ def create_x_post(client: anthropic.Anthropic, topic: str, style: str = "tip") -
         max_tokens=500,
         messages=[{
             "role": "user",
-            "content": f"""Xで伸びるツイートを書いてください。
+            "content": f"""進化心理学をテーマにしたXポストを書いてください。
+エボサイ（@selfcomestomine）のスタイルを参考に。
 
 トピック: {topic}
 スタイル: {style_prompts.get(style, style_prompts['tip'])}
 
 条件：
 - 140文字以内（日本語）
-- 絵文字を2〜3個使う
-- 具体的で実用的
+- 絵文字は0〜1個（控えめに）
+- 断定的な進化心理学インサイト（「〜である」調）
+- 「サピエンス」「われわれ」「適応」などのワードを使う
 - ハッシュタグは本文に含めない
 
 JSON形式で出力：
 {{
   "text": "ツイート本文",
-  "hashtags": ["タグ1", "タグ2"]
+  "hashtags": ["進化心理学", "タグ2"]
 }}"""
         }]
     )
