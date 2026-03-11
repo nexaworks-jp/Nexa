@@ -116,6 +116,127 @@ def verify_signature(body: bytes, signature: str, channel_secret: str) -> bool:
     return hmac.compare_digest(expected, signature)
 
 
+def trigger_github_actions(workflow: str = "run.yml") -> bool:
+    """GitHub ActionsのWorkflowを手動トリガーする"""
+    if not GITHUB_TOKEN or not GITHUB_REPO:
+        return False
+    url = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{workflow}/dispatches"
+    try:
+        resp = requests.post(
+            url,
+            headers={"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github.v3+json"},
+            json={"ref": "main"},
+            timeout=10
+        )
+        return resp.status_code == 204
+    except Exception:
+        return False
+
+
+def update_strategy_via_github(updates: dict) -> bool:
+    """GitHubのstrategy.jsonを更新する"""
+    strategy = load_memory_file("strategy.json")
+    strategy.update(updates)
+    strategy["updated_by"] = "LINE指示"
+    strategy["updated_at"] = datetime.now().isoformat()
+    return save_memory_to_github("strategy.json", strategy)
+
+
+def handle_free_command(command: str, config: dict) -> str:
+    """自由テキストをClaudeが解釈して実行する"""
+    anthropic_key = config.get("anthropic_api_key", "")
+    if not anthropic_key:
+        return "⚠️ Anthropic APIキーが設定されていません。"
+
+    # 現在の状態を取得
+    earnings = load_memory_file("earnings.json")
+    strategy = load_memory_file("strategy.json")
+    risk_state = load_memory_file("risk_state.json")
+
+    context = {
+        "total_earnings": earnings.get("total_earnings_jpy", 0),
+        "current_strategy": strategy.get("primary_niche", ""),
+        "iteration": strategy.get("iteration", 0),
+        "paused": list(risk_state.get("paused_modules", {}).keys()),
+    }
+
+    try:
+        resp = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": anthropic_key,
+                "anthropic-version": "2023-06-01",
+                "content-type": "application/json"
+            },
+            json={
+                "model": "claude-haiku-4-5-20251001",
+                "max_tokens": 600,
+                "messages": [{
+                    "role": "user",
+                    "content": f"""あなたは自律型AIビジネスのアシスタントです。
+オーナーからLINEで以下の指示が来ました。
+
+【指示】
+{command}
+
+【現在の状態】
+{json.dumps(context, ensure_ascii=False)}
+
+実行可能なアクション：
+1. strategy_update: 戦略を変更する（ニッチ・テーマ変更など）
+2. trigger_run: 今すぐ実行する
+3. trigger_weekly: 週次改善を今すぐ実行
+4. answer: 質問に答えるだけ
+
+JSON形式で返答してください：
+{{
+  "action": "strategy_update|trigger_run|trigger_weekly|answer",
+  "strategy_updates": {{}},
+  "reply": "LINEに返すメッセージ（100文字以内）"
+}}"""
+                }]
+            },
+            timeout=15
+        )
+
+        if resp.status_code != 200:
+            return f"⚠️ AI処理エラー: {resp.status_code}"
+
+        text = resp.json()["content"][0]["text"]
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        if start < 0:
+            return text[:200]
+
+        result = json.loads(text[start:end])
+        action = result.get("action", "answer")
+        reply = result.get("reply", "処理しました。")
+
+        if action == "strategy_update" and result.get("strategy_updates"):
+            ok = update_strategy_via_github(result["strategy_updates"])
+            if ok:
+                return f"✅ 戦略を更新しました\n\n{reply}"
+            return f"⚠️ 更新に失敗しました\n\n{reply}"
+
+        elif action == "trigger_run":
+            ok = trigger_github_actions("run.yml")
+            if ok:
+                return f"▶️ 今すぐ実行を開始しました\n\n{reply}"
+            return f"⚠️ 実行トリガーに失敗しました"
+
+        elif action == "trigger_weekly":
+            ok = trigger_github_actions("weekly.yml")
+            if ok:
+                return f"🔧 週次改善を開始しました\n\n{reply}"
+            return f"⚠️ 実行トリガーに失敗しました"
+
+        else:
+            return reply
+
+    except Exception as e:
+        return f"⚠️ エラーが発生しました: {str(e)[:80]}"
+
+
 def handle_command(command: str, config: dict) -> str:
     """LINEからのコマンドを処理して返答を返す"""
     cmd = command.strip()
@@ -226,14 +347,12 @@ def handle_command(command: str, config: dict) -> str:
             "📈 改善 - 最新の改善分析を表示\n"
             "⏸️ 停止 - 全モジュールを停止\n"
             "▶️ 再開 - 全モジュールを再開\n"
-            "❓ ヘルプ - このメッセージ"
+            "❓ ヘルプ - このメッセージ\n\n"
+            "💬 それ以外は自由に話しかけてOK"
         )
 
     else:
-        return (
-            f"「{command[:20]}」は認識できないコマンドです。\n"
-            "「ヘルプ」で使えるコマンドを確認できます。"
-        )
+        return handle_free_command(command, config)
 
 
 class LineWebhookHandler(BaseHTTPRequestHandler):

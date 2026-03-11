@@ -70,4 +70,5 @@ jobs:
           git add memory/
           git add proposals/ 2>/dev/null || true
           git diff --staged --quiet || git commit -m "🤖 AI Company run $(date +'%Y-%m-%d %H:%M')"
+          git pull --rebase origin main || true
           git push

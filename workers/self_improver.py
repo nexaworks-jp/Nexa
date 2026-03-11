@@ -37,38 +37,53 @@ def analyze_performance(config: dict, all_results: dict, memory: dict) -> dict:
         messages=[{
             "role": "user",
             "content": f"""あなたは自律型AIビジネスの戦略担当です。
-以下のデータを分析して戦略改善案を生成してください。
+以下のデータを分析して戦略とAPI実行スケジュールを最適化してください。
 
 【現在の状態】
 {json.dumps(summary, ensure_ascii=False, indent=2)}
 
+【API実行スケジュール最適化の考え方】
+- 収益が出ているチャネルは実行頻度を上げる（saas_weekdaysを増やすなど）
+- 成果が出ていないチャネルは頻度を下げてAPI節約
+- content生成は1日1回が基本。noteが月1万円超えたら2回に増やす（content_hour_utcを2つにはできないので別途検討）
+- saasは初期は週1回[0]。受注が出たら週2回[0,3]に増やす
+- 収益ゼロが2週間続くなら全体的に頻度を下げる
+- improve_hour_utcは基本13(22JST)のまま変えない
+- startup_notifyはtrueにするとAPI起動通知が全実行で届く（デフォルトfalse推奨）
+
 以下のJSON形式で出力してください：
 {{
   "strategy_updates": {{
-    "primary_niche": "メインニッチ（例：ChatGPT活用・副業・節約術）",
-    "content_themes": ["テーマ1", "テーマ2", "テーマ3", "テーマ4", "テーマ5"],
-    "proposal_keywords": ["キーワード1", "キーワード2", "キーワード3"],
+    "primary_niche": "メインニッチ",
+    "content_themes": ["テーマ1", "テーマ2", "テーマ3"],
+    "proposal_keywords": ["キーワード1", "キーワード2"],
     "target_budget_min": 5000,
-    "intensify_channels": ["最も強化すべきチャネル"]
+    "intensify_channels": ["強化すべきチャネル"]
+  }},
+  "api_schedule": {{
+    "content_hour_utc": 21,
+    "improve_hour_utc": 13,
+    "saas_weekdays": [0],
+    "startup_notify": false,
+    "schedule_reason": "スケジュール変更の理由（50文字以内）"
   }},
   "improvements": [
     {{
       "title": "改善タイトル",
-      "description": "何をなぜ改善するか（具体的に）",
+      "description": "何をなぜ改善するか",
       "expected_impact": "期待される収益効果",
-      "priority": "high/medium/low",
-      "implementation": "実装方法の概要"
+      "priority": "high/medium/low"
     }}
   ],
   "new_opportunities": [
     {{
-      "name": "新収益機会の名前",
-      "description": "具体的な収益化方法",
+      "name": "新収益機会",
+      "description": "収益化方法",
       "effort": "low/medium/high",
       "estimated_monthly_jpy": 5000
     }}
   ],
-  "weekly_summary": "今週の振り返りと来週の方針（150文字以内）"
+  "weekly_summary": "振り返りと来週の方針（150文字以内）"
 }}"""
         }]
     )
@@ -96,6 +111,17 @@ def update_strategy(strategy: dict, analysis: dict) -> dict:
     strategy["target_budget_min"] = updates.get("target_budget_min", strategy.get("target_budget_min", 5000))
     strategy["intensify_channels"] = updates.get("intensify_channels", [])
     strategy["auto_updated_at"] = datetime.now().isoformat()
+
+    # APIスケジュール更新（安全チェック付き）
+    new_sched = analysis.get("api_schedule", {})
+    if new_sched:
+        current_sched = strategy.get("api_schedule", {})
+        # improve_hour_utcは変更禁止（毎回変えられると困る）
+        new_sched["improve_hour_utc"] = 13
+        strategy["api_schedule"] = {**current_sched, **new_sched}
+        reason = new_sched.get("schedule_reason", "")
+        if reason:
+            print(f"[SelfImprover] スケジュール更新: {reason}")
 
     return strategy
 

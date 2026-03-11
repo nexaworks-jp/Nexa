@@ -244,8 +244,24 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
     risk_state = risk_manager.reset_daily_if_needed(risk_state)
     risk_state = risk_manager.increment_run(risk_state)
 
-    # LINE: 起動通知
-    if not dry_run:
+    # API実行スケジュール（strategy.jsonで動的管理）
+    hour = datetime.now().hour  # UTC: 21=6JST, 3=12JST, 9=18JST, 13=22JST
+    weekday = datetime.now().weekday()  # 0=月曜
+    sched = strategy.get("api_schedule", {})
+    # デフォルト値（初回・未設定時）
+    content_hour     = sched.get("content_hour_utc", 21)       # 6JST
+    improve_hour     = sched.get("improve_hour_utc", 13)       # 22JST
+    saas_weekdays    = sched.get("saas_weekdays", [0])          # 月曜のみ
+    startup_notify   = sched.get("startup_notify", False)       # 起動通知は22時のみ
+
+    do_content  = (hour == content_hour) or weekly or dry_run
+    do_improve  = (hour == improve_hour) or weekly or dry_run
+    do_saas     = (weekday in saas_weekdays) or weekly or dry_run
+
+    print(f"  スケジュール: content={do_content} saas={do_saas} improve={do_improve}")
+
+    # LINE: 起動通知（22時のみ or スケジュール設定時）
+    if not dry_run and (startup_notify or hour == improve_hour):
         line_notifier.notify_startup(config)
 
     # Step 1: トレンド分析
@@ -253,14 +269,22 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
     trends = trend_analyzer.analyze(config)
     print(f"  → {', '.join(trends['topics'][:4])}")
 
-    # Step 2: CEO判断
+    # Step 2: CEO判断（crowdworksは毎回、他はスケジュール依存）
     print("\n[Step 2] CEO判断...")
+    forced_tasks = ["crowdworks"]
+    if do_content:
+        forced_tasks.append("content")
+    if do_saas:
+        forced_tasks.append("saas")
+
     state = {
         "earnings": earnings, "strategy": strategy,
         "trends": trends, "proposals": proposals_memory, "saas": saas_memory
     }
     decision = ceo_decide(client, state)
-    tasks = decision.get("tasks", ["content"])
+    # CEOの判断をベースに、スケジュール外のタスクは除外
+    raw_tasks = decision.get("tasks", ["crowdworks"])
+    tasks = [t for t in raw_tasks if t in forced_tasks or t == "all"] or forced_tasks
     print(f"  → タスク: {tasks}")
     print(f"  → 理由: {decision.get('reasoning', '')}")
 
@@ -289,7 +313,6 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
                 for _ in range(proposals_count):
                     risk_state = risk_manager.record_proposal(risk_state)
                 risk_state = risk_manager.record_success(risk_state, "crowdworks")
-                # LINE: 案件発見・提案文通知
                 if not dry_run and cw_result.get("proposals"):
                     suitable = cw_result.get("scan", {}).get("suitable", [])
                     line_notifier.notify_jobs_found(config, suitable)
@@ -308,7 +331,6 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
             try:
                 all_results["saas"] = run_saas_task(config, trends, saas_memory, dry_run)
                 risk_state = risk_manager.record_success(risk_state, "saas")
-                # LINE: SaaSアイデア通知
                 if not dry_run:
                     idea = all_results["saas"].get("saas_result", {}).get("idea", {})
                     if idea:
@@ -325,19 +347,22 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
     strategy["last_updated"] = datetime.now().isoformat()
     strategy["iteration"] = strategy.get("iteration", 0) + 1
 
-    # Step 5: 自己改善分析（戦略自動更新）
-    print("\n[Step 5] 自己改善分析...")
-    memory_snapshot = {
-        "earnings": earnings, "risk_state": risk_state,
-        "strategy": strategy, "proposals": proposals_memory
-    }
-    improve_result = self_improver.run(config, all_results, memory_snapshot, weekly=weekly)
-    if improve_result.get("updated_strategy"):
-        strategy.update(improve_result["updated_strategy"])
-    if weekly and not dry_run and improve_result.get("analysis"):
-        from apply_new_modules import apply_new_modules
-        new_modules = apply_new_modules()
-        line_notifier.notify_weekly_improvement(config, improve_result["analysis"], new_modules)
+    # Step 5: 自己改善分析（22時 or 週次のみ）
+    if do_improve:
+        print("\n[Step 5] 自己改善分析...")
+        memory_snapshot = {
+            "earnings": earnings, "risk_state": risk_state,
+            "strategy": strategy, "proposals": proposals_memory
+        }
+        improve_result = self_improver.run(config, all_results, memory_snapshot, weekly=weekly)
+        if improve_result.get("updated_strategy"):
+            strategy.update(improve_result["updated_strategy"])
+        if weekly and not dry_run and improve_result.get("analysis"):
+            from apply_new_modules import apply_new_modules
+            new_modules = apply_new_modules()
+            line_notifier.notify_weekly_improvement(config, improve_result["analysis"], new_modules)
+    else:
+        print("\n[Step 5] 自己改善: 本日22時に実行予定（スキップ）")
 
     save_memory("published.json", published)
     save_memory("strategy.json", strategy)
@@ -346,9 +371,8 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
     save_memory("saas.json", saas_memory)
     risk_manager.save_state(risk_state)
 
-    # LINE: 22時の実行時のみ日次レポートを送信
-    hour = datetime.now().hour
-    if not dry_run and hour >= 21:
+    # LINE: 22時のみ日次レポート
+    if not dry_run and hour == improve_hour:
         proposals_today = sum(
             1 for r in all_results.get("crowdworks", {}).get("proposals", [])
         )

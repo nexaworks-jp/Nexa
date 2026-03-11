@@ -71,4 +71,5 @@ jobs:
           git add proposals/
           git add workers/auto_*.py 2>/dev/null || true
           git diff --staged --quiet || git commit -m "🤖 Weekly improvement $(date +'%Y-%m-%d')"
+          git pull --rebase origin main || true
           git push
