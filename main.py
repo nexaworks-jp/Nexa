@@ -391,6 +391,24 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
             except Exception as e:
                 print(f"[Task: Milestone] エラー: {e}")
 
+    # ソフィア進化モジュール（apply_new_modulesで適用されたauto_sofia_*.pyを実行）
+    if do_content and not dry_run:
+        import glob as _glob
+        sofia_modules = _glob.glob(os.path.join(os.path.dirname(__file__), "workers", "auto_sofia_*.py"))
+        for _mod_path in sofia_modules:
+            try:
+                import importlib.util as _ilu
+                _spec = _ilu.spec_from_file_location("auto_sofia", _mod_path)
+                _mod = _ilu.module_from_spec(_spec)
+                _spec.loader.exec_module(_mod)
+                if hasattr(_mod, "run"):
+                    _result = _mod.run(config, {"earnings": earnings, "strategy": strategy, "mood": today_mood})
+                    if _result.get("enabled") and _result.get("text"):
+                        print(f"[Sofia Evolution] {os.path.basename(_mod_path)}: {_result['text'][:40]}...")
+                        x_publisher.publish(config, [{"text": _result["text"], "hashtags": [], "type": _result.get("type", "sofia_feature")}], dry_run)
+            except Exception as e:
+                print(f"[Sofia Evolution] {os.path.basename(_mod_path)} エラー: {e}")
+
     # ソフィア日記（朝6時JST = content_hour のみ・1日1回）
     if do_content and not dry_run:
         print("\n[Task: Diary] ソフィア日記生成...")

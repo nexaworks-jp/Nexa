@@ -634,6 +634,100 @@ weekly_summary: {analysis.get('weekly_summary', '')}
     print(f"[SelfImprover] 学習ログを更新しました")
 
 
+def _evolve_sofia_character(client: anthropic.Anthropic, config: dict):
+    """
+    週次: ソフィアのキャラクター進化を自律実行。
+    memory/sofia_feature_backlog.json から最優先のpendingアイテムを1つ選び、
+    Pythonコードを生成して proposals/new_modules/ に保存する。
+    apply_new_modules.py が次回の週次実行時に workers/ へ自動適用する。
+    """
+    backlog_path = os.path.join(BASE_DIR, "memory", "sofia_feature_backlog.json")
+    if not os.path.exists(backlog_path):
+        return
+
+    try:
+        with open(backlog_path, "r", encoding="utf-8") as f:
+            backlog = json.load(f)
+    except Exception:
+        return
+
+    pending = [item for item in backlog if item.get("status") == "pending"]
+    if not pending:
+        print("[SelfImprover] ソフィア進化: 未実装アイテムなし")
+        return
+
+    target = sorted(pending, key=lambda x: x.get("priority", 99))[0]
+    print(f"[SelfImprover] ソフィア進化: '{target['title']}' を実装中...")
+
+    # 既存のキャラクター設定を読み込む（コンテキスト用）
+    style_path = os.path.join(BASE_DIR, "note用", "x_claude_beginner.md")
+    style_context = ""
+    if os.path.exists(style_path):
+        with open(style_path, "r", encoding="utf-8") as f:
+            style_context = f.read()[:800]
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=2500,
+        messages=[{
+            "role": "user",
+            "content": f"""Nexaというシステムのソフィアというキャラクターに以下の新機能を追加するPythonモジュールを作成してください。
+
+【追加する機能】
+タイトル: {target['title']}
+説明: {target['description']}
+バランス目標: {target.get('balance', 'AIらしさ×人間らしさ')}
+
+【ソフィアのキャラクター設定（抜粋）】
+{style_context}
+
+【既存の実装パターン（参考）】
+- workers/diary_writer.py: generate_diary(config, context) → {{"text": "...", "hashtags": [], "type": "diary"}}
+- workers/content_writer.py: create_x_post(client, topic, style, ...) → {{"text": "...", "hashtags": []}}
+- 既存ファイルを直接変更するのではなく、新しい関数として追加する
+
+要件:
+- run(config: dict, context: dict = {{}}) → dict を持つ
+- 戻り値は {{"text": "Xに投稿する文章", "type": "sofia_feature", "enabled": True}}
+- Claude APIはclaude-haiku-4-5-20251001を使う（コスト最小化）
+- エラーはtry/exceptでスキップ、失敗時は空dict {{}} を返す
+- 100〜150行程度
+- Pythonコードのみ返す（説明不要）"""
+        }]
+    )
+
+    code = response.content[0].text.strip()
+    if "```python" in code:
+        code = code.split("```python")[1].split("```")[0]
+    elif "```" in code:
+        code = code.split("```")[1].split("```")[0]
+
+    feature_id = target.get("id", "sofia_feature")
+    date_str = datetime.now().strftime("%Y%m%d")
+    filename = f"{date_str}_sofia_{feature_id}.py"
+
+    new_modules_dir = os.path.join(BASE_DIR, "proposals", "new_modules")
+    os.makedirs(new_modules_dir, exist_ok=True)
+    filepath = os.path.join(new_modules_dir, filename)
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(f'"""\nソフィア進化モジュール: {target["title"]}\n生成日: {datetime.now().isoformat()}\nバランス: {target.get("balance", "")}\n"""\n')
+        f.write(code)
+
+    # バックログを更新
+    for item in backlog:
+        if item.get("id") == target.get("id"):
+            item["status"] = "generated"
+            item["generated_at"] = datetime.now().strftime("%Y-%m-%d")
+            item["filename"] = filename
+            break
+
+    with open(backlog_path, "w", encoding="utf-8") as f:
+        json.dump(backlog, f, ensure_ascii=False, indent=2)
+
+    print(f"[SelfImprover] ソフィア進化モジュール生成: {filename}")
+
+
 def run(config: dict, all_results: dict, memory: dict, weekly: bool = False) -> dict:
     """メイン実行関数"""
     print("[SelfImprover] 自己改善分析を開始...")
@@ -693,6 +787,12 @@ def run(config: dict, all_results: dict, memory: dict, weekly: bool = False) -> 
         if weekly:
             print("[SelfImprover] 週次実行: 新モジュール生成を試みます...")
             new_module_path = generate_weekly_module(config, analysis)
+
+            # ソフィアのキャラクター進化（週次・自律）
+            try:
+                _evolve_sofia_character(client, config)
+            except Exception as e:
+                print(f"[SelfImprover] ソフィア進化エラー（無視）: {e}")
 
         count = len(analysis.get("improvements", []))
         opp_count = len(analysis.get("new_opportunities", []))
