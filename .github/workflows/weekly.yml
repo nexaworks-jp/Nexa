@@ -49,7 +49,7 @@ jobs:
             },
             "settings": {
               "dry_run": false,
-              "note_post_per_day": 2,
+              "note_post_per_day": 4,
               "x_post_per_day": 8,
               "primary_niche": "AI活用術・副業・節約",
               "language": "ja"
@@ -67,10 +67,13 @@ jobs:
         run: |
           git config --local user.email "ai-company[bot]@users.noreply.github.com"
           git config --local user.name "AI Company Bot"
-          git add memory/
-          git add proposals/
-          git add "note用/" 2>/dev/null || true
+          cp -r memory/ /tmp/ai_memory/ 2>/dev/null || true
+          cp -r proposals/ /tmp/ai_proposals/ 2>/dev/null || true
+          git fetch origin main
+          git reset --hard origin/main
+          cp -r /tmp/ai_memory/. memory/ 2>/dev/null || true
+          cp -r /tmp/ai_proposals/. proposals/ 2>/dev/null || true
+          git add memory/ proposals/ "note用/" 2>/dev/null || true
           git add workers/auto_*.py 2>/dev/null || true
           git diff --staged --quiet || git commit -m "🤖 Weekly improvement $(date +'%Y-%m-%d')"
-          git pull --rebase origin main || true
-          git push
+          git push origin main
