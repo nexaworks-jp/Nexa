@@ -57,19 +57,6 @@ jobs:
           }
           EOF
 
-      - name: Run social learning (Sofia humanization)
-        run: |
-          python3 - << 'EOF'
-import json, sys
-sys.path.insert(0, ".")
-from workers import social_learner
-
-with open("config.json") as f:
-    config = json.load(f)
-
-social_learner.run(config)
-EOF
-
       - name: Run weekly improvement (with new module generation)
         run: python main.py --weekly
 
