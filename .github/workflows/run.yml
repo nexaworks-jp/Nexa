@@ -72,6 +72,14 @@ jobs:
           git config --local user.name "AI Company Bot"
           git add memory/
           git add proposals/ 2>/dev/null || true
+          git add drafts/ 2>/dev/null || true
+          git add docs/ 2>/dev/null || true
           git diff --staged --quiet || git commit -m "🤖 AI Company run $(date +'%Y-%m-%d %H:%M')"
           git pull --rebase origin main || true
           git push
+
+      - name: Deploy to Cloudflare Pages
+        run: npx wrangler pages deploy docs/ --project-name=nexa --commit-dirty=true
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
