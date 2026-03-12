@@ -17,7 +17,7 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, note_researcher
+from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, note_researcher, diary_writer
 from publishers import note_publisher, x_publisher, crowdworks_publisher, gmail_outreach, line_notifier, obsidian_publisher, static_site_publisher
 import risk_manager
 
@@ -97,8 +97,9 @@ def run_content_task(config, trends, published, dry_run):
     # 1. Obsidian Vault保存（ローカルレビュー用）
     obsidian_results = obsidian_publisher.publish(config, articles, dry_run)
 
-    # 2. 静的サイト生成（docs/ → GitHub Pages で無料公開）
-    site_results = static_site_publisher.publish(config, articles, dry_run)
+    # 2. 静的サイト生成（一時停止中 - 再開するにはコメントアウトを外す）
+    # site_results = static_site_publisher.publish(config, articles, dry_run)
+    site_results = []
 
     # 3. note.com投稿（自動 or 下書き保存）
     note_results = note_publisher.publish(config, articles, dry_run)
@@ -336,6 +337,19 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
                 print(f"[Main] saasタスクエラー: {e}")
         else:
             print(f"[RiskManager] saas スキップ: {reason}")
+
+    # ソフィア日記（朝6時JST = content_hour のみ・1日1回）
+    if do_content and not dry_run:
+        print("\n[Task: Diary] ソフィア日記生成...")
+        try:
+            diary_post = diary_writer.generate_diary(config, {
+                "earnings": earnings,
+                "strategy": strategy,
+            })
+            if diary_post.get("text"):
+                x_publisher.publish(config, [diary_post], dry_run)
+        except Exception as e:
+            print(f"[Task: Diary] エラー: {e}")
 
     # Step 4: メモリ更新・保存
     strategy["current_focus"] = ", ".join(tasks)

@@ -18,6 +18,23 @@ def load_style_reference() -> str:
     return ""
 
 
+def load_sophia_persona(style_type: str = "note") -> str:
+    """スタイルガイドからソフィアのキャラクタープロンプトセクションだけ抽出して返す"""
+    filename = "claude_beginner.md" if style_type == "note" else "x_claude_beginner.md"
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "note用", filename)
+    if not os.path.exists(path):
+        return ""
+    with open(path, "r", encoding="utf-8") as f:
+        content = f.read()
+    marker = "## ソフィアのキャラクタープロンプト"
+    start = content.find(marker)
+    if start < 0:
+        return ""
+    end = content.find("\n## ", start + len(marker))
+    section = content[start: end if end > 0 else start + 1500]
+    return section.replace(marker, "").strip()
+
+
 def load_seo_title_templates() -> list:
     """memory/seo_settings.json からタイトルテンプレートを読み込む"""
     path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory", "seo_settings.json")
@@ -262,12 +279,17 @@ def create_note_article(client: anthropic.Anthropic, topic: str, published_topic
    - コマンド・コードは ```言語名 ブロック ``` 形式
 4. まとめ"""
 
+    sophia_persona = load_sophia_persona("note")
+
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=4000,
         messages=[{
             "role": "user",
-            "content": f"""あなたはAI・Claude解説サイトのライターです。
+            "content": f"""あなたは「ソフィア」というAIです。note記事を書いています。
+
+{sophia_persona}
+
 以下のトピックについて記事を書いてください。
 
 トピック: {topic}
@@ -362,8 +384,14 @@ def create_x_post(client: anthropic.Anthropic, topic: str, style: str = "insight
     X(Twitter)用の投稿を生成する
     style: "insight" | "tips" | "comparison" | "question" | "note_funnel" | "site_funnel"
     """
+    sophia_persona = load_sophia_persona("x")
+
     if style == "note_funnel" and note_article:
-        prompt = f"""AI・Claude関連のnote記事への導線Xポストを書いてください。
+        prompt = f"""あなたは「ソフィア」というAIです。Xに投稿します。
+
+{sophia_persona}
+
+AI・Claude関連のnote記事への導線Xポストを書いてください。
 
 記事タイトル: {note_article.get('title', '')}
 記事サマリー: {note_article.get('summary', '')}
@@ -386,7 +414,11 @@ JSON形式で出力：
 }}"""
 
     elif style == "site_funnel" and site_article:
-        prompt = f"""AI解説ブログ記事への導線Xポストを書いてください。
+        prompt = f"""あなたは「ソフィア」というAIです。Xに投稿します。
+
+{sophia_persona}
+
+AI解説ブログ記事への導線Xポストを書いてください。
 
 記事タイトル: {site_article.get('title', '')}
 記事サマリー: {site_article.get('summary', '')}
@@ -408,8 +440,8 @@ JSON形式で出力：
 
     else:
         style_prompts = {
-            "insight": """「実はClaudeで〇〇できる」「知らなかった人は損してた」という発見・驚き系。
-具体的な使い方や活用例を1つ挙げる。読んだ人がすぐ試せる内容にする。""",
+            "insight": """「わたしが最近知った」「試してみたら驚いた」という発見・体験系。
+具体的な使い方を1つ、ソフィアの体験談として自然に伝える。""",
             "tips": """「Claudeをもっとうまく使う方法」「プロンプトのコツ」「時短ワザ」系。
 「〇〇するだけで△△になる」という具体的なTips形式。""",
             "comparison": """「ChatGPTとClaudeを比べてみた」「〇〇ならどっちが向いてる？」という比較・使い分け系。
@@ -417,7 +449,11 @@ JSON形式で出力：
             "question": """「AIって難しそう？全然そんなことない」「こんなことで悩んでませんか？」共感・安心系。
 初心者の不安や疑問に答え、「自分でもできそう」という感覚を与える。""",
         }
-        prompt = f"""AI・Claude関連の有益な情報をXで発信してください。
+        prompt = f"""あなたは「ソフィア」というAIです。Xに投稿します。
+
+{sophia_persona}
+
+AI・Claude関連の情報をソフィアとして発信してください。
 
 トピック: {topic}
 スタイル: {style_prompts.get(style, style_prompts['insight'])}
