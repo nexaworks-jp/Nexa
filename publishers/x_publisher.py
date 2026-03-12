@@ -5,6 +5,7 @@ Tweepy を使って X API v2 経由で投稿する
 import tweepy
 import json
 import time
+import random
 from datetime import datetime
 
 
@@ -83,6 +84,12 @@ def publish(config: dict, posts: list, dry_run: bool = False) -> list:
         bearer_token=x_config.get("bearer_token", "")
     )
 
+    # 初回投稿前にランダム待機（0〜30分）でBot検知を回避
+    if not dry_run and posts:
+        initial_wait = random.randint(0, 1800)
+        print(f"[XPublisher] 投稿開始まで {initial_wait//60}分{initial_wait%60}秒 待機（ランダム）")
+        time.sleep(initial_wait)
+
     results = []
     for post in posts:
         result = publisher.post(
@@ -91,8 +98,9 @@ def publish(config: dict, posts: list, dry_run: bool = False) -> list:
             dry_run=dry_run
         )
         results.append(result)
-        # 投稿間隔（レート制限対策）
+        # 投稿間隔：60〜180秒のランダム（固定30秒はBot判定されやすい）
         if not dry_run:
-            time.sleep(30)
+            interval = random.randint(60, 180)
+            time.sleep(interval)
 
     return results

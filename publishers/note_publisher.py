@@ -5,6 +5,8 @@ Playwrightでnote.comに自動投稿する。
 """
 import os
 import json
+import random
+import time
 from datetime import datetime
 
 
@@ -338,6 +340,10 @@ def publish(config: dict, articles: list, dry_run: bool = False) -> list:
             continue
 
         if use_playwright and email and password:
+            # 投稿前にランダム待機（0〜20分）でBot検知を回避
+            wait = random.randint(0, 1200)
+            print(f"[NotePublisher] 投稿まで {wait//60}分{wait%60}秒 待機（ランダム）")
+            time.sleep(wait)
             result = auto_post_with_playwright(article, email, password)
             if result.get("success"):
                 results.append(result)

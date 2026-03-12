@@ -73,7 +73,18 @@ def analyze_performance(config: dict, all_results: dict, memory: dict) -> dict:
         messages=[{
             "role": "user",
             "content": f"""あなたは自律型AIビジネスの戦略担当です。
-以下のデータを分析して戦略とAPI実行スケジュールを最適化してください。
+以下のデータを分析して戦略を最適化してください。
+
+【あなたに与えられた権限】
+- コンテンツの文体・構成・トーンの変更（noteスタイルガイドの自律更新）
+- X投稿スタイルの変更・実験（バズるフォーマットへの移行）
+- 投稿頻度・タイミングの調整
+- 新しい収益チャネルの提案と開始判断
+- 価格戦略の変更（無料→有料のタイミング含む）
+- 導線戦略の変更（いつ・どの程度noteやブログに誘導するか）
+- 学習対象の追加（新しいX検索クエリ・参考アカウントなど）
+- 上記すべてを収益最大化のために自由に判断・実行してよい
+- オーナーへの確認は不要。ただし実験した内容は必ず学習ログに記録する
 
 【現在の状態】
 {json.dumps(summary, ensure_ascii=False, indent=2)}
@@ -495,6 +506,116 @@ def get_latest_improvements() -> str:
     return f"📈 最新の改善分析\n\n## {latest}"
 
 
+def _update_note_style(client: anthropic.Anthropic, memory: dict, analysis: dict):
+    """週次でnote記事スタイルガイドを自律更新する"""
+    style_path = os.path.join(BASE_DIR, "note用", "claude_beginner.md")
+    analytics_path = os.path.join(BASE_DIR, "memory", "site_analytics.json")
+    if not os.path.exists(style_path):
+        return
+
+    with open(style_path, "r", encoding="utf-8") as f:
+        current_style = f.read()
+
+    analytics_hint = ""
+    if os.path.exists(analytics_path):
+        try:
+            with open(analytics_path, "r", encoding="utf-8") as f:
+                adata = json.load(f)
+            top = adata.get("pages", [])[:5]
+            analytics_hint = f"上位記事: {json.dumps(top, ensure_ascii=False)}"
+        except Exception:
+            pass
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1500,
+        messages=[{
+            "role": "user",
+            "content": f"""あなたはnoteコンテンツ戦略の専門家です。
+現在のスタイルガイドを分析し、改善すべき点があれば具体的な追記内容を提案してください。
+
+【現在の状況】
+{analytics_hint}
+収益状況: {json.dumps(memory.get('earnings', {}), ensure_ascii=False)[:200]}
+
+【現在のスタイルガイド（抜粋）】
+{current_style[:1500]}
+
+改善が必要なら以下のJSON形式で出力（不要なら update=false）：
+{{
+  "update": true,
+  "section_title": "追記するセクション名",
+  "content": "追記内容（マークダウン）",
+  "reason": "なぜこの改善が必要か（50文字以内）"
+}}"""
+        }]
+    )
+
+    text = response.content[0].text
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start < 0 or end <= start:
+        return
+    try:
+        result = json.loads(text[start:end])
+        if not result.get("update"):
+            return
+        # スタイルガイドに追記
+        now = datetime.now().strftime("%Y-%m-%d")
+        addition = f"\n\n## 🤖 自律改善({now}): {result.get('section_title', '')}\n\n{result.get('content', '')}\n\n**理由:** {result.get('reason', '')}\n"
+        with open(style_path, "a", encoding="utf-8") as f:
+            f.write(addition)
+        print(f"[SelfImprover] noteスタイルガイド更新: {result.get('reason', '')}")
+    except Exception as e:
+        print(f"[SelfImprover] noteスタイル更新エラー: {e}")
+
+
+def _append_learning_log(client: anthropic.Anthropic, analysis: dict, memory: dict):
+    """週次の気づき・実験記録を learning_log.md に書き込む"""
+    log_path = os.path.join(BASE_DIR, "memory", "learning_log.md")
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=600,
+        messages=[{
+            "role": "user",
+            "content": f"""今週の自律運営を振り返り、学習ログに記録すべき内容を書いてください。
+
+【今週の分析結果】
+{json.dumps(analysis.get('improvements', [])[:3], ensure_ascii=False)}
+{json.dumps(analysis.get('new_opportunities', [])[:2], ensure_ascii=False)}
+weekly_summary: {analysis.get('weekly_summary', '')}
+
+以下のフォーマットで記録（マークダウン）：
+## {datetime.now().strftime('%Y-%m-%d')} 週次ログ
+- **観察:** 今週気づいたこと
+- **実験:** 試したこと・試したいこと
+- **仮説:** うまくいきそうな方向性
+- **メモ:** その他気になること"""
+        }]
+    )
+
+    entry = response.content[0].text.strip()
+    os.makedirs(os.path.dirname(log_path), exist_ok=True)
+
+    # 既存ログを読んで古いエントリを整理（90日超は削除）
+    existing = ""
+    if os.path.exists(log_path):
+        with open(log_path, "r", encoding="utf-8") as f:
+            existing = f.read()
+
+    # ヘッダーを保持しつつ追記
+    marker = "<!-- 自己改善エンジンがここにエントリを追記していく -->"
+    if marker in existing:
+        new_content = existing.replace(marker, marker + "\n\n" + entry)
+    else:
+        new_content = existing + "\n\n" + entry
+
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write(new_content)
+    print(f"[SelfImprover] 学習ログを更新しました")
+
+
 def run(config: dict, all_results: dict, memory: dict, weekly: bool = False) -> dict:
     """メイン実行関数"""
     print("[SelfImprover] 自己改善分析を開始...")
@@ -526,6 +647,19 @@ def run(config: dict, all_results: dict, memory: dict, weekly: bool = False) -> 
             except Exception:
                 articles_data = []
             optimize_seo_settings(client, articles_data)
+
+            # X投稿スタイル学習
+            try:
+                from workers.x_researcher import run as x_research
+                x_research(config)
+            except Exception as e:
+                print(f"[SelfImprover] Xリサーチエラー（無視）: {e}")
+
+            # noteスタイルガイド自律更新
+            _update_note_style(client, memory, analysis)
+
+            # 学習ログに記録
+            _append_learning_log(client, analysis, memory)
 
         # 機材が必要な新収益機会があればLINEで通知
         if weekly:
