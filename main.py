@@ -17,7 +17,7 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, note_researcher, diary_writer, mood_generator, engagement_worker
+from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, note_researcher, diary_writer, mood_generator
 from publishers import note_publisher, x_publisher, crowdworks_publisher, gmail_outreach, line_notifier, obsidian_publisher, static_site_publisher
 import risk_manager
 
@@ -371,12 +371,6 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
         except Exception as e:
             print(f"[Task: Diary] エラー: {e}")
 
-        # 自動いいね（リプライへの反応）
-        print("\n[Task: Engagement] リプライ自動いいね...")
-        try:
-            engagement_worker.auto_like_replies(config)
-        except Exception as e:
-            print(f"[Task: Engagement] エラー: {e}")
 
     # Step 4: メモリ更新・保存
     strategy["current_focus"] = ", ".join(tasks)
