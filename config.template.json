@@ -16,14 +16,19 @@
     "access_token_secret": "YOUR_X_ACCESS_TOKEN_SECRET",
     "bearer_token": "YOUR_X_BEARER_TOKEN"
   },
+  "obsidian": {
+    "vault_path": "C:/Users/YOUR_USERNAME/Documents/ObsidianVault",
+    "folder": "note記事"
+  },
   "amazon_associate": {
     "tag": "YOUR_AMAZON_ASSOCIATE_TAG"
   },
   "settings": {
     "dry_run": false,
-    "note_post_per_day": 2,
+    "note_post_per_day": 4,
+    "note_auto_post": false,
     "x_post_per_day": 8,
-    "primary_niche": "AI活用術・副業・節約",
+    "primary_niche": "Claude初心者・AI入門",
     "language": "ja"
   }
 }

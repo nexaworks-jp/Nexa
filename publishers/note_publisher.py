@@ -1,166 +1,192 @@
 """
-note.com 自動投稿パブリッシャー
-note.comの非公式APIを使って記事を自動投稿する
+note.com パブリッシャー
+Playwrightでnote.comに自動投稿する。
+失敗時は drafts/ に下書き保存してオーナーに手動投稿を依頼する。
 """
-import requests
-import json
-import time
+import os
 from datetime import datetime
 
 
-class NotePublisher:
-    BASE_URL = "https://note.com"
-    API_URL = "https://note.com/api/v1"
+# ==================== 下書き保存（フォールバック） ====================
 
-    def __init__(self, email: str, password: str):
-        self.email = email
-        self.password = password
-        self.session = requests.Session()
-        self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-            "Accept": "application/json, text/plain, */*",
-            "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
-            "Content-Type": "application/json"
-        })
-        self.logged_in = False
-        self.user_id = None
+def save_as_draft(article: dict) -> dict:
+    """記事をdrafts/に保存する（X導線ポストも一緒に出力）"""
+    drafts_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "drafts")
+    os.makedirs(drafts_dir, exist_ok=True)
 
-    def login(self) -> bool:
-        """note.comにログイン"""
-        try:
-            # まずトップページを取得してCSRFトークンを取得
-            resp = self.session.get(self.BASE_URL)
-            resp.raise_for_status()
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = os.path.join(drafts_dir, f"note_{timestamp}.md")
 
-            # ログインAPIを呼ぶ
-            login_data = {
-                "login": self.email,
-                "password": self.password
-            }
-            resp = self.session.post(
-                f"{self.API_URL}/sessions",
-                json=login_data
-            )
+    hashtags_str = ", ".join(article.get("hashtags", []))
+    hashtag_text = " ".join([f"#{t}" for t in article.get("hashtags", [])])
+    price = article.get("price", 0)
+    x_funnel = article.get("x_funnel_post", "")
 
-            if resp.status_code == 200:
-                data = resp.json()
-                self.user_id = data.get("data", {}).get("id")
-                self.logged_in = True
-                print(f"[NotePublisher] ログイン成功: user_id={self.user_id}")
-                return True
-            else:
-                print(f"[NotePublisher] ログイン失敗: {resp.status_code} {resp.text[:200]}")
-                return False
-        except Exception as e:
-            print(f"[NotePublisher] ログインエラー: {e}")
-            return False
+    x_section = ""
+    if x_funnel:
+        x_section = f"""
+---
 
-    def publish_article(self, article: dict, dry_run: bool = False) -> dict:
-        """
-        記事を投稿する
-        article: { "title": str, "content": str, "price": int, "hashtags": list }
-        """
-        if dry_run:
-            print(f"[NotePublisher] DRY RUN: '{article['title']}' (¥{article.get('price', 0)})")
-            return {"success": True, "dry_run": True, "title": article["title"]}
+## X導線ポスト（記事投稿後にURLを差し替えてXに投稿）
 
-        if not self.logged_in:
-            if not self.login():
-                return {"success": False, "error": "ログイン失敗"}
+```
+{x_funnel}
+```
 
-        try:
-            # ハッシュタグをnote形式に変換
-            hashtags = article.get("hashtags", [])
-            tag_string = " ".join([f"#{tag}" for tag in hashtags])
+※ `[noteリンク]` を実際の記事URLに差し替えてください
+"""
 
-            # コンテンツにハッシュタグを追加
-            full_content = article["content"] + f"\n\n{tag_string}"
-
-            payload = {
-                "note": {
-                    "name": article["title"],
-                    "body": full_content,
-                    "status": "published",
-                    "price": article.get("price", 0),
-                    "limited_check": article.get("price", 0) > 0,
-                    "free_body_limit_rate": 30 if article.get("price", 0) > 0 else 100
-                }
-            }
-
-            resp = self.session.post(
-                f"{self.API_URL}/text_notes",
-                json=payload
-            )
-
-            if resp.status_code in (200, 201):
-                data = resp.json()
-                note_data = data.get("data", {})
-                result = {
-                    "success": True,
-                    "note_id": note_data.get("id"),
-                    "url": note_data.get("noteUrl", ""),
-                    "title": article["title"],
-                    "price": article.get("price", 0),
-                    "published_at": datetime.now().isoformat()
-                }
-                print(f"[NotePublisher] 投稿成功: {result['url']}")
-                return result
-            else:
-                error_msg = f"HTTP {resp.status_code}: {resp.text[:300]}"
-                print(f"[NotePublisher] 投稿失敗: {error_msg}")
-                return {"success": False, "error": error_msg}
-
-        except Exception as e:
-            print(f"[NotePublisher] 投稿エラー: {e}")
-            return {"success": False, "error": str(e)}
-
-    def save_as_draft(self, article: dict) -> dict:
-        """記事をローカルにMarkdownとして保存（フォールバック）"""
-        import os
-        drafts_dir = "drafts"
-        os.makedirs(drafts_dir, exist_ok=True)
-
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"{drafts_dir}/note_{timestamp}.md"
-
-        content = f"""---
-title: {article['title']}
-price: {article.get('price', 0)}
-hashtags: {', '.join(article.get('hashtags', []))}
+    content = f"""---
+title: {article.get('title', '')}
+price: {price}
+hashtags: {hashtags_str}
 created_at: {article.get('created_at', '')}
 ---
 
-# {article['title']}
+# {article.get('title', '')}
 
-{article['content']}
-"""
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(content)
+{article.get('content', '')}
 
-        print(f"[NotePublisher] ドラフト保存: {filename}")
-        return {"success": True, "saved_to": filename, "title": article["title"]}
+---
+※ ハッシュタグ: {hashtag_text}
+※ 価格設定: ¥{price}（有料部分は本文60〜70%地点に設定）
+※ 画像を挿入してからnoteに投稿してください
+{x_section}"""
 
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(content)
+
+    print(f"[NotePublisher] 下書き保存: {filename}")
+    return {
+        "success": True,
+        "saved_to": filename,
+        "title": article.get("title", ""),
+        "price": price,
+        "is_draft": True
+    }
+
+
+# ==================== Playwright自動投稿 ====================
+
+def auto_post_with_playwright(article: dict, note_email: str, note_password: str) -> dict:
+    """
+    PlaywrightでNote.comに記事を自動投稿する。
+    戻り値: { "success": bool, "url": str, "title": str }
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError:
+        print("[NotePublisher] playwright未インストール。pip install playwright && playwright install chromium")
+        return {"success": False, "reason": "playwright not installed"}
+
+    title = article.get("title", "")
+    content = article.get("content", "")
+    price = article.get("price", 300)
+    hashtags = article.get("hashtags", [])
+
+    print(f"[NotePublisher] Playwright投稿開始: '{title}'")
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context()
+        page = context.new_page()
+
+        try:
+            # ログイン
+            page.goto("https://note.com/login", timeout=30000)
+            page.wait_for_selector('input[name="email"]', timeout=10000)
+            page.fill('input[name="email"]', note_email)
+            page.fill('input[name="password"]', note_password)
+            page.click('button[type="submit"]')
+            page.wait_for_url("https://note.com/**", timeout=15000)
+            print("[NotePublisher] ログイン成功")
+
+            # 新規記事作成ページへ
+            page.goto("https://note.com/notes/new", timeout=30000)
+            page.wait_for_selector(".editor-title", timeout=15000)
+
+            # タイトル入力
+            page.click(".editor-title")
+            page.fill(".editor-title", title)
+
+            # 本文入力（note.comはcontenteditable）
+            page.click(".editor-body [contenteditable]")
+            page.keyboard.type(content, delay=10)
+
+            # ハッシュタグ
+            for tag in hashtags[:5]:
+                # ハッシュタグ入力エリアを探す
+                try:
+                    hashtag_input = page.locator('input[placeholder*="タグ"], input[placeholder*="ハッシュタグ"]').first
+                    hashtag_input.fill(f"#{tag}")
+                    page.keyboard.press("Enter")
+                except Exception:
+                    pass
+
+            # 有料設定（¥300）
+            if price > 0:
+                try:
+                    # 「有料」ボタンまたは価格設定を探す
+                    page.locator('text=有料').first.click(timeout=5000)
+                    price_input = page.locator('input[type="number"]').first
+                    price_input.fill(str(price))
+                except Exception:
+                    print("[NotePublisher] 有料設定スキップ（要素が見つからず）")
+
+            # 公開ボタン
+            page.locator('button:has-text("公開"), button:has-text("投稿")').first.click(timeout=10000)
+            page.wait_for_timeout(3000)
+
+            # 公開完了後URLを取得
+            current_url = page.url
+            print(f"[NotePublisher] 投稿完了: {current_url}")
+            browser.close()
+            return {"success": True, "url": current_url, "title": title}
+
+        except Exception as e:
+            print(f"[NotePublisher] Playwright投稿エラー: {e}")
+            # スクリーンショットを保存（デバッグ用）
+            try:
+                debug_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "drafts", "debug")
+                os.makedirs(debug_dir, exist_ok=True)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                page.screenshot(path=os.path.join(debug_dir, f"error_{timestamp}.png"))
+            except Exception:
+                pass
+            browser.close()
+            return {"success": False, "reason": str(e), "title": title}
+
+
+# ==================== メイン投稿関数 ====================
 
 def publish(config: dict, articles: list, dry_run: bool = False) -> list:
-    """記事リストを投稿する"""
-    note_config = config.get("note", {})
-    publisher = NotePublisher(
-        email=note_config.get("email", ""),
-        password=note_config.get("password", "")
-    )
-
+    """
+    記事リストをnote.comに投稿する。
+    Playwright自動投稿を試み、失敗したら下書き保存にフォールバック。
+    """
     results = []
-    for article in articles:
-        if note_config.get("email") and note_config.get("email") != "YOUR_NOTE_EMAIL":
-            result = publisher.publish_article(article, dry_run=dry_run)
-            if not result.get("success") and not dry_run:
-                # APIが失敗したらドラフト保存
-                result = publisher.save_as_draft(article)
-        else:
-            # 認証情報未設定 → ドラフト保存
-            result = publisher.save_as_draft(article)
+    note_cfg = config.get("note", {})
+    email = note_cfg.get("email", "")
+    password = note_cfg.get("password", "")
+    use_playwright = config.get("settings", {}).get("note_auto_post", False)
 
+    for article in articles:
+        if dry_run:
+            print(f"[NotePublisher] DRY RUN: '{article.get('title')}' (¥{article.get('price', 0)})")
+            results.append({"success": True, "dry_run": True, "title": article.get("title")})
+            continue
+
+        # Playwright自動投稿（設定で有効化されている場合）
+        if use_playwright and email and password:
+            result = auto_post_with_playwright(article, email, password)
+            if result.get("success"):
+                results.append(result)
+                continue
+            else:
+                print(f"[NotePublisher] 自動投稿失敗。下書き保存にフォールバック。")
+
+        # 下書き保存（フォールバック）
+        result = save_as_draft(article)
         results.append(result)
-        time.sleep(2)  # レート制限対策
 
     return results

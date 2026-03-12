@@ -183,6 +183,26 @@ def notify_weekly_improvement(config: dict, improvements: dict, new_modules: lis
     )
 
 
+def notify_draft_ready(config: dict, drafts: list[dict]):
+    """note下書き完成通知（画像挿入・投稿はオーナーが実施）"""
+    if not drafts:
+        return
+    line = config.get("line", {})
+    lines = [f"📝 note下書きが完成しました（{len(drafts)}本）\n"]
+    for i, d in enumerate(drafts[:3], 1):
+        title = d.get("title", "不明")[:30]
+        price = d.get("price", 0)
+        lines.append(f"{i}. {title}")
+        lines.append(f"   価格: ¥{price}")
+    lines.append(f"\n📁 drafts/ フォルダを確認してください")
+    lines.append("🖼️ 画像を挿入して投稿をお願いします（5分程度）")
+    text(
+        line.get("channel_access_token", ""),
+        line.get("user_id", ""),
+        "\n".join(lines)
+    )
+
+
 def notify_cost_warning(config: dict, cost_usd: float, limit_usd: float):
     """API費用警告"""
     line = config.get("line", {})

@@ -18,7 +18,7 @@ if sys.platform == "win32":
 sys.path.insert(0, os.path.dirname(__file__))
 
 from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, note_researcher
-from publishers import note_publisher, x_publisher, crowdworks_publisher, gmail_outreach, line_notifier
+from publishers import note_publisher, x_publisher, crowdworks_publisher, gmail_outreach, line_notifier, obsidian_publisher, static_site_publisher
 import risk_manager
 
 
@@ -88,25 +88,42 @@ def do_content_this_run(state: dict) -> bool:
 # ==================== タスク実行 ====================
 
 def run_content_task(config, trends, published, dry_run):
-    """note + Xコンテンツ投稿"""
+    """note + X + MicroCMS + Obsidianコンテンツ投稿"""
     print("\n[Task: Content] コンテンツ生成・投稿")
     generated = content_writer.generate_content_batch(config, trends, published)
 
-    note_results = note_publisher.publish(
-        config, generated.get("note_articles", []), dry_run
-    )
+    articles = generated.get("note_articles", [])
+
+    # 1. Obsidian Vault保存（ローカルレビュー用）
+    obsidian_results = obsidian_publisher.publish(config, articles, dry_run)
+
+    # 2. 静的サイト生成（docs/ → GitHub Pages で無料公開）
+    site_results = static_site_publisher.publish(config, articles, dry_run)
+
+    # 3. note.com投稿（自動 or 下書き保存）
+    note_results = note_publisher.publish(config, articles, dry_run)
+
+    # 4. X投稿
     x_results = x_publisher.publish(
         config, generated.get("x_posts", []), dry_run
     )
 
+    # 下書き保存完了をLINEに通知
+    if not dry_run:
+        drafts = [r for r in note_results if r.get("is_draft") and r.get("success")]
+        if drafts:
+            line_notifier.notify_draft_ready(config, drafts)
+
     # トピック使用履歴を更新
-    for a in generated.get("note_articles", []):
+    for a in articles:
         t = a.get("topic", "")
         if t and t not in published.get("topics_used", []):
             published.setdefault("topics_used", []).append(t)
 
     return {
         "note": note_results,
+        "static_site": site_results,
+        "obsidian": obsidian_results,
         "x": x_results,
         "generated": generated
     }
@@ -357,8 +374,9 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
     if "content" in all_results:
         cr = all_results["content"]
         note_ok = sum(1 for r in cr.get("note", []) if r.get("success"))
+        site_ok = sum(1 for r in cr.get("static_site", []) if r.get("success"))
         x_ok = sum(1 for r in cr.get("x", []) if r.get("success"))
-        print(f"  コンテンツ: note {note_ok}本 / X {x_ok}件")
+        print(f"  コンテンツ: note {note_ok}本 / サイト {site_ok}本 / X {x_ok}件")
     if "crowdworks" in all_results:
         cw = all_results["crowdworks"]
         print(f"  CrowdWorks: 提案文 {len(cw.get('proposals', []))}件")
