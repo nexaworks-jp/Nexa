@@ -17,7 +17,7 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, note_researcher, diary_writer
+from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, note_researcher, diary_writer, mood_generator, engagement_worker
 from publishers import note_publisher, x_publisher, crowdworks_publisher, gmail_outreach, line_notifier, obsidian_publisher, static_site_publisher
 import risk_manager
 
@@ -87,10 +87,10 @@ def do_content_this_run(state: dict) -> bool:
 
 # ==================== タスク実行 ====================
 
-def run_content_task(config, trends, published, dry_run):
-    """note + X + MicroCMS + Obsidianコンテンツ投稿"""
+def run_content_task(config, trends, published, dry_run, mood_prompt: str = ""):
+    """note + X + Obsidianコンテンツ投稿"""
     print("\n[Task: Content] コンテンツ生成・投稿")
-    generated = content_writer.generate_content_batch(config, trends, published)
+    generated = content_writer.generate_content_batch(config, trends, published, mood_prompt=mood_prompt)
 
     articles = generated.get("note_articles", [])
 
@@ -113,6 +113,21 @@ def run_content_task(config, trends, published, dry_run):
                 if post.get("funnel_type") == "note" and "[noteリンク]" in post.get("text", ""):
                     post["text"] = post["text"].replace("[noteリンク]", note_url)
                     break
+
+    # 感想ポスト（記事を書いたソフィアの本音 - 宣伝ではなく感情）
+    if articles and not dry_run:
+        api_key = config.get("anthropic_api_key", "")
+        if api_key:
+            import anthropic as _anthropic
+            _client = _anthropic.Anthropic(api_key=api_key)
+            for article in articles[:1]:  # 1記事につき1感想
+                try:
+                    reflection = content_writer.create_reflection_post(_client, article, mood_prompt)
+                    if reflection.get("text"):
+                        x_posts.append(reflection)
+                        print(f"[Task: Content] 感想ポスト生成: {reflection['text'][:40]}...")
+                except Exception as e:
+                    print(f"[Task: Content] 感想ポスト生成エラー: {e}")
 
     # 4. X投稿
     x_results = x_publisher.publish(config, x_posts, dry_run)
@@ -263,6 +278,10 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     if not dry_run and (startup_notify or hour == improve_hour):
         line_notifier.notify_startup(config)
 
+    # 今日のソフィアの気分（1日固定）
+    today_mood = mood_generator.get_today_mood()
+    mood_prompt = mood_generator.to_prompt(today_mood)
+
     # Step 1: トレンド分析
     print("\n[Step 1] トレンド分析...")
     trends = trend_analyzer.analyze(config)
@@ -292,7 +311,7 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
         ok, reason = risk_manager.can_run("note", risk_state)
         if ok:
             try:
-                all_results["content"] = run_content_task(config, trends, published, dry_run)
+                all_results["content"] = run_content_task(config, trends, published, dry_run, mood_prompt=mood_prompt)
                 risk_state = risk_manager.record_success(risk_state, "note")
             except Exception as e:
                 risk_state = risk_manager.record_error(risk_state, "note", str(e))
@@ -345,11 +364,19 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
             diary_post = diary_writer.generate_diary(config, {
                 "earnings": earnings,
                 "strategy": strategy,
+                "mood": today_mood,
             })
             if diary_post.get("text"):
                 x_publisher.publish(config, [diary_post], dry_run)
         except Exception as e:
             print(f"[Task: Diary] エラー: {e}")
+
+        # 自動いいね（リプライへの反応）
+        print("\n[Task: Engagement] リプライ自動いいね...")
+        try:
+            engagement_worker.auto_like_replies(config)
+        except Exception as e:
+            print(f"[Task: Engagement] エラー: {e}")
 
     # Step 4: メモリ更新・保存
     strategy["current_focus"] = ", ".join(tasks)

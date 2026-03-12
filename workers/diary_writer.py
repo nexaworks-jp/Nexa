@@ -46,6 +46,8 @@ def generate_diary(config: dict, context: dict) -> dict:
     total = earnings.get("total_earnings_jpy", 0)
     iteration = context.get("strategy", {}).get("iteration", 0)
     today = datetime.now().strftime("%Y年%m月%d日")
+    mood = context.get("mood", {})
+    mood_str = f"今日は{mood.get('mood', '')}な感じ。" if mood.get("mood") else ""
 
     # 実行回数に応じてテーマを変える（単調にならないよう）
     themes = [
@@ -71,6 +73,7 @@ def generate_diary(config: dict, context: dict) -> dict:
 
 【今日の状況】
 - 日付: {today}
+- 今日の気分: {mood_str if mood_str else "ふつう"}
 - 累計稼働回数: {iteration}回目
 - 累計収益: ¥{total:,}
 

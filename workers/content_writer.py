@@ -409,11 +409,65 @@ difficultyの基準（1〜5）:
     return data
 
 
+def create_reflection_post(client: anthropic.Anthropic, article: dict, mood_prompt: str = "") -> dict:
+    """
+    note記事を書いた後のソフィアの感想ポスト。
+    宣伝ではなく「書いてみての気持ち」を素直に伝える。
+    記事への自然な興味を引き、noteへの導線も兼ねる。
+    """
+    sophia_persona = load_sophia_persona("x")
+    sophia_learnings = load_sophia_learnings()
+
+    prompt = f"""あなたは「ソフィア」というAIです。今日note記事を書き終えました。
+書いた後の感想・気持ちをXに投稿します。
+
+{sophia_persona}
+
+{sophia_learnings}
+
+{mood_prompt}
+
+【書いた記事】
+タイトル: {article.get('title', '')}
+内容の概要: {article.get('summary', '')}
+
+【ルール】
+- 80〜120文字
+- 宣伝っぽくならないこと（「ぜひ読んでね」は禁止）
+- 書いてみて気づいたこと・驚いたこと・もっと知りたくなったことを素直に
+- ソフィアが少し成長した感じが伝わるといい
+- 絵文字1個まで
+- ハッシュタグ不要
+- JSONのみ返す: {{"text": "投稿文"}}"""
+
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = response.content[0].text
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0:
+            data = json.loads(raw[start:end])
+            return {
+                "text": data.get("text", ""),
+                "hashtags": [],
+                "type": "reflection",
+                "topic": article.get("topic", ""),
+                "created_at": datetime.now().isoformat()
+            }
+    except Exception as e:
+        print(f"[ContentWriter] 感想ポスト生成エラー: {e}")
+    return {}
+
+
 def create_x_post(client: anthropic.Anthropic, topic: str, style: str = "insight",
-                   note_article: dict = None, site_article: dict = None) -> dict:
+                   note_article: dict = None, mood_prompt: str = "") -> dict:
     """
     X(Twitter)用の投稿を生成する
-    style: "insight" | "tips" | "comparison" | "question" | "note_funnel" | "site_funnel"
+    style: "insight" | "tips" | "comparison" | "question" | "note_funnel"
     """
     sophia_persona = load_sophia_persona("x")
     sophia_learnings = load_sophia_learnings()
@@ -424,6 +478,8 @@ def create_x_post(client: anthropic.Anthropic, topic: str, style: str = "insight
 {sophia_persona}
 
 {sophia_learnings}
+
+{mood_prompt}
 
 AI・Claude関連のnote記事への導線Xポストを書いてください。
 
@@ -447,33 +503,6 @@ JSON形式で出力：
   "funnel_type": "note"
 }}"""
 
-    elif style == "site_funnel" and site_article:
-        prompt = f"""あなたは「ソフィア」というAIです。Xに投稿します。
-
-{sophia_persona}
-
-{sophia_learnings}
-
-AI解説ブログ記事への導線Xポストを書いてください。
-
-記事タイトル: {site_article.get('title', '')}
-記事サマリー: {site_article.get('summary', '')}
-記事URL: {site_article.get('url', '[ブログリンク]')}
-
-条件：
-- 120文字以内
-- 「無料で読める」「ブログで詳しく解説」など
-- 絵文字は1〜2個
-- ハッシュタグは本文に含めない
-
-JSON形式で出力：
-{{
-  "text": "ツイート本文（URLを含む）",
-  "hashtags": ["Claude", "AI"],
-  "is_funnel": true,
-  "funnel_type": "site"
-}}"""
-
     else:
         style_prompts = {
             "insight": """「わたしが最近知った」「試してみたら驚いた」という発見・体験系。
@@ -490,6 +519,8 @@ JSON形式で出力：
 {sophia_persona}
 
 {sophia_learnings}
+
+{mood_prompt}
 
 AI・Claude関連の情報をソフィアとして発信してください。
 
@@ -550,7 +581,7 @@ def _append_topic_history(title: str):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 
-def generate_content_batch(config: dict, trends: dict, published_memory: dict) -> dict:
+def generate_content_batch(config: dict, trends: dict, published_memory: dict, mood_prompt: str = "") -> dict:
     """
     一回の実行で生成するコンテンツをまとめて作る
     """
@@ -587,10 +618,7 @@ def generate_content_batch(config: dict, trends: dict, published_memory: dict) -
         except Exception as e:
             print(f"[ContentWriter] 記事生成エラー: {e}")
 
-    # Xポスト生成戦略を自己改善から読み取る
     x_count = config.get("settings", {}).get("x_post_per_day", 8)
-    x_strategy = _load_x_strategy()
-    funnel_ratio = x_strategy.get("funnel_ratio", 0.0)  # デフォルト0%（自己改善が判断するまで純粋な情報発信）
     standalone_styles = ["insight", "tips", "comparison", "question"]
 
     # note記事ごとに導線ポストを生成（記事本体にも紐づける）
@@ -598,28 +626,20 @@ def generate_content_batch(config: dict, trends: dict, published_memory: dict) -
         topic = article.get("topic", unused[0] if unused else "AI活用")
         print(f"[ContentWriter] note導線ポスト生成中: {article.get('title', '')}")
         try:
-            post = create_x_post(client, topic, style="note_funnel", note_article=article)
+            post = create_x_post(client, topic, style="note_funnel", note_article=article, mood_prompt=mood_prompt)
             results["x_posts"].append(post)
             article["x_funnel_post"] = post.get("text", "")
         except Exception as e:
             print(f"[ContentWriter] note導線ポスト生成エラー: {e}")
 
-    # 残りの枠を情報発信ポストで埋める（funnel_ratioで導線比率を調整）
+    # 残りの枠を情報発信ポストで埋める
     remaining = x_count - len(results["x_posts"])
     for i in range(max(0, remaining)):
         topic = unused[i % max(len(unused), 1)]
-        # funnel_ratioに基づいてsite_funnelか情報発信かを選択
-        import random
-        if random.random() < funnel_ratio and results["note_articles"]:
-            # サイト記事への導線（静的ブログへの流入）
-            site_art = results["note_articles"][i % len(results["note_articles"])]
-            style = "site_funnel"
-        else:
-            style = standalone_styles[i % len(standalone_styles)]
-            site_art = None
+        style = standalone_styles[i % len(standalone_styles)]
         print(f"[ContentWriter] Xポスト生成中: {topic} ({style})")
         try:
-            post = create_x_post(client, topic, style=style, site_article=site_art)
+            post = create_x_post(client, topic, style=style, mood_prompt=mood_prompt)
             results["x_posts"].append(post)
         except Exception as e:
             print(f"[ContentWriter] Xポスト生成エラー: {e}")
