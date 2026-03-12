@@ -95,8 +95,33 @@ def _save_tweet_id(tweet_id: str):
         json.dump(history, f, ensure_ascii=False, indent=2)
 
 
+def _last_posted_minutes_ago() -> float:
+    """最後の投稿から何分経ったか（tweet_history.jsonを参照）"""
+    import os
+    from datetime import datetime, timezone
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory", "tweet_history.json")
+    if not os.path.exists(path):
+        return 9999
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            history = json.load(f)
+        if not history:
+            return 9999
+        last = history[-1].get("posted_at", "")
+        last_dt = datetime.fromisoformat(last)
+        if last_dt.tzinfo is None:
+            last_dt = last_dt.replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        return (now - last_dt).total_seconds() / 60
+    except Exception:
+        return 9999
+
+
 def publish(config: dict, posts: list, dry_run: bool = False) -> list:
-    """ポストリストを投稿する"""
+    """ポストリストを投稿する（1セッション最大2件・直近90分以内はスキップ）"""
+    if not posts:
+        return []
+
     x_config = config.get("x_twitter", {})
     publisher = XPublisher(
         api_key=x_config.get("api_key", ""),
@@ -106,23 +131,30 @@ def publish(config: dict, posts: list, dry_run: bool = False) -> list:
         bearer_token=x_config.get("bearer_token", "")
     )
 
-    # 初回投稿前にランダム待機（0〜30分）でBot検知を回避
-    if not dry_run and posts:
-        initial_wait = random.randint(0, 1800)
-        print(f"[XPublisher] 投稿開始まで {initial_wait//60}分{initial_wait%60}秒 待機（ランダム）")
-        time.sleep(initial_wait)
+    # 直近90分以内に投稿済みならスキップ（連投Bot判定回避）
+    if not dry_run:
+        minutes_ago = _last_posted_minutes_ago()
+        if minutes_ago < 90:
+            print(f"[XPublisher] 前回投稿から{minutes_ago:.0f}分。90分未満のためスキップ。")
+            return []
+
+    # 1セッション最大2件、ランダムで1か2に変動（毎回同数はBot判定されやすい）
+    max_per_session = random.choices([1, 2], weights=[60, 40])[0]
+    selected = posts[:max_per_session]
+    print(f"[XPublisher] 今回投稿: {len(selected)}件 / 生成済み{len(posts)}件")
 
     results = []
-    for post in posts:
+    for post in selected:
         result = publisher.post(
             text=post["text"],
             hashtags=post.get("hashtags", []),
             dry_run=dry_run
         )
         results.append(result)
-        # 投稿間隔：60〜180秒のランダム（固定30秒はBot判定されやすい）
-        if not dry_run:
-            interval = random.randint(60, 180)
+        # 投稿間隔：3〜8分のランダム（数秒間隔はBot判定リスク大）
+        if not dry_run and post != selected[-1]:
+            interval = random.randint(180, 480)
+            print(f"[XPublisher] 次の投稿まで{interval//60}分{interval%60}秒待機...")
             time.sleep(interval)
 
     return results

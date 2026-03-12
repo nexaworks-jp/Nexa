@@ -2,8 +2,8 @@ name: AI Company Auto Run
 
 on:
   schedule:
-    # 毎日 6:00, 12:00, 18:00, 22:00 JST (UTC+9) に実行
-    - cron: '0 21,3,9,13 * * *'
+    # 3時間ごとに実行（8つのランダム投稿窓 → 毎日異なる時間帯に分散）
+    - cron: '0 */3 * * *'
   workflow_dispatch:
     inputs:
       force_content:
@@ -75,7 +75,7 @@ jobs:
 
       - name: Random posting delay (human-like timing)
         run: |
-          DELAY=$((RANDOM % 2700))
+          DELAY=$((RANDOM % 3600))
           echo "ランダム遅延: ${DELAY}秒 ($(( DELAY / 60 ))分) 待機中..."
           sleep $DELAY
 
