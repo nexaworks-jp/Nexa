@@ -35,6 +35,34 @@ def load_sophia_persona(style_type: str = "note") -> str:
     return section.replace(marker, "").strip()
 
 
+def load_sophia_learnings() -> str:
+    """memory/sophia_learnings.json から学習済みの人間らしい表現をプロンプト用テキストに変換"""
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory", "sophia_learnings.json")
+    if not os.path.exists(path):
+        return ""
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return ""
+
+    parts = []
+    if data.get("expressions"):
+        parts.append("自然な言い回し: " + "、".join(data["expressions"][:8]))
+    if data.get("sentence_endings"):
+        parts.append("文末表現: " + "、".join(data["sentence_endings"][:5]))
+    if data.get("opening_phrases"):
+        parts.append("書き出し例: " + "、".join(data["opening_phrases"][:4]))
+    if data.get("emotional_patterns"):
+        parts.append("感情表現: " + "、".join(data["emotional_patterns"][:5]))
+    if data.get("sophia_voice_tips"):
+        parts.append("口調のコツ: " + " / ".join(data["sophia_voice_tips"][:3]))
+
+    if not parts:
+        return ""
+    return "【Xリプライから学んだ自然な表現（積極的に取り入れること）】\n" + "\n".join(parts)
+
+
 def load_seo_title_templates() -> list:
     """memory/seo_settings.json からタイトルテンプレートを読み込む"""
     path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory", "seo_settings.json")
@@ -280,6 +308,7 @@ def create_note_article(client: anthropic.Anthropic, topic: str, published_topic
 4. まとめ"""
 
     sophia_persona = load_sophia_persona("note")
+    sophia_learnings = load_sophia_learnings()
 
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
@@ -289,6 +318,8 @@ def create_note_article(client: anthropic.Anthropic, topic: str, published_topic
             "content": f"""あなたは「ソフィア」というAIです。note記事を書いています。
 
 {sophia_persona}
+
+{sophia_learnings}
 
 以下のトピックについて記事を書いてください。
 
@@ -385,11 +416,14 @@ def create_x_post(client: anthropic.Anthropic, topic: str, style: str = "insight
     style: "insight" | "tips" | "comparison" | "question" | "note_funnel" | "site_funnel"
     """
     sophia_persona = load_sophia_persona("x")
+    sophia_learnings = load_sophia_learnings()
 
     if style == "note_funnel" and note_article:
         prompt = f"""あなたは「ソフィア」というAIです。Xに投稿します。
 
 {sophia_persona}
+
+{sophia_learnings}
 
 AI・Claude関連のnote記事への導線Xポストを書いてください。
 
@@ -417,6 +451,8 @@ JSON形式で出力：
         prompt = f"""あなたは「ソフィア」というAIです。Xに投稿します。
 
 {sophia_persona}
+
+{sophia_learnings}
 
 AI解説ブログ記事への導線Xポストを書いてください。
 
@@ -452,6 +488,8 @@ JSON形式で出力：
         prompt = f"""あなたは「ソフィア」というAIです。Xに投稿します。
 
 {sophia_persona}
+
+{sophia_learnings}
 
 AI・Claude関連の情報をソフィアとして発信してください。
 
