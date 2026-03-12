@@ -172,6 +172,8 @@ header {
   transition: all .15s;
 }
 .sidebar-tag:hover { background: var(--tag-bg); color: var(--tag-color); border-color: #b8e6c8; }
+.tag { cursor: pointer; }
+.tag:hover { opacity: .75; }
 .about-text { font-size: 13px; color: var(--text-sub); line-height: 1.7; }
 .about-text strong { color: var(--text); }
 .btn-note {
@@ -235,6 +237,53 @@ header {
 }
 .paid-wall h3 { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
 .paid-wall p { color: var(--text-sub); font-size: 14px; margin-bottom: 24px; }
+
+/* Nexaバナー */
+.nexa-banner {
+  background: #1a1a2e;
+  color: #a0a8c0;
+  text-align: center;
+  font-size: 11px;
+  padding: 5px;
+  letter-spacing: .08em;
+}
+.nexa-banner strong { color: #fff; }
+
+/* 難易度 */
+.difficulty { display: flex; align-items: center; gap: 4px; }
+.difficulty-stars { color: #f5a623; font-size: 13px; letter-spacing: -1px; }
+.difficulty-label { font-size: 11px; color: var(--text-sub); }
+
+/* フィルターバー */
+.filter-bar {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.filter-bar label { font-size: 12px; font-weight: 700; color: var(--text-sub); white-space: nowrap; }
+.filter-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.filter-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-sub);
+  cursor: pointer;
+  transition: all .15s;
+}
+.filter-btn:hover, .filter-btn.active {
+  background: var(--tag-bg);
+  color: var(--tag-color);
+  border-color: #b8e6c8;
+}
+.article-card.hidden { display: none; }
 
 /* フッター */
 footer { text-align: center; padding: 40px 0; color: #b0b8c1; font-size: 12px; border-top: 1px solid var(--border); background: var(--white); margin-top: 40px; }
@@ -337,34 +386,45 @@ def markdown_to_html(text: str) -> str:
 
 # ==================== ページ生成 ====================
 
-HEADER_HTML = """<header>
+NOTE_CREATOR_URL = "https://note.com/youth_waster"
+
+HEADER_HTML = """<div class="nexa-banner"><strong>【Nexa】</strong> 自律型AIが毎日更新する、AI初心者のための解説サイト</div>
+<header>
   <div class="header-inner">
     <a class="logo" href="{root}index.html">AI初心者ガイド</a>
     <nav class="header-nav">
       <a href="{root}index.html">記事一覧</a>
-      <a href="https://note.com" target="_blank" rel="noopener">note</a>
+      <a href="{note_url}" target="_blank" rel="noopener">note</a>
     </nav>
   </div>
 </header>"""
 
-SIDEBAR_HTML = """<aside class="sidebar">
+
+def build_sidebar_html(tags: list = None) -> str:
+    """サイドバーHTMLを生成。tagsを渡すとフィルター連携タグを生成する。"""
+    if tags:
+        tag_items = "".join(
+            f'<button class="sidebar-tag filter-btn" data-tag="{t}">{t}</button>'
+            for t in tags[:12]
+        )
+    else:
+        tag_items = "".join(
+            f'<span class="sidebar-tag">{t}</span>'
+            for t in ["Claude", "AI入門", "ChatGPT", "副業", "使い方", "初心者"]
+        )
+    return f"""<aside class="sidebar">
   <div class="sidebar-box">
     <h3>このサイトについて</h3>
     <p class="about-text">
       <strong>パソコンを買ったばかりの方でも大丈夫。</strong><br>
       AIツールの使い方・活用術を、専門用語なしでわかりやすく解説します。
     </p>
-    <a class="btn-note" href="https://note.com" target="_blank" rel="noopener">noteで記事を読む →</a>
+    <a class="btn-note" href="{NOTE_CREATOR_URL}" target="_blank" rel="noopener">noteで記事を読む →</a>
   </div>
   <div class="sidebar-box">
     <h3>タグ</h3>
-    <div class="sidebar-tags">
-      <a class="sidebar-tag" href="#">Claude</a>
-      <a class="sidebar-tag" href="#">AI入門</a>
-      <a class="sidebar-tag" href="#">ChatGPT</a>
-      <a class="sidebar-tag" href="#">副業</a>
-      <a class="sidebar-tag" href="#">使い方</a>
-      <a class="sidebar-tag" href="#">初心者</a>
+    <div class="sidebar-tags" id="sidebar-tag-filters">
+      {tag_items}
     </div>
   </div>
 </aside>"""
@@ -435,8 +495,8 @@ def generate_article_page(article: dict) -> str:
 
     tags_html = "".join([f'<span class="tag">#{t}</span>' for t in hashtags])
     price_badge = f'<span class="price-badge">¥{price}</span>' if price > 0 else '<span class="free-badge">無料</span>'
-    header = HEADER_HTML.format(root="../")
-    sidebar = SIDEBAR_HTML
+    header = HEADER_HTML.format(root="../", note_url=NOTE_CREATOR_URL)
+    sidebar = build_sidebar_html()
 
     article_id = article.get("id", "")
     canonical_url = f"{SITE_URL}/articles/{article_id}.html"
@@ -544,6 +604,42 @@ document.querySelectorAll('pre').forEach(function(pre) {{
     }});
   }});
 }});
+var activeDiff = 0, activeTag = '';
+function applyFilter() {{
+  document.querySelectorAll('#article-list .article-card').forEach(function(card) {{
+    var diff = parseInt(card.dataset.difficulty || '1');
+    var tags = card.dataset.tags || '';
+    var diffOk = activeDiff === 0 || diff === activeDiff;
+    var tagOk = activeTag === '' || tags.split(' ').indexOf(activeTag) >= 0;
+    card.classList.toggle('hidden', !(diffOk && tagOk));
+  }});
+}}
+function setTagFilter(tag) {{
+  activeTag = tag;
+  document.querySelectorAll('#tag-filters .filter-btn, #sidebar-tag-filters .filter-btn').forEach(function(b) {{
+    b.classList.toggle('active', b.dataset.tag === tag);
+  }});
+  var allBtn = document.querySelector('#tag-filters .filter-btn[data-tag=""]');
+  if (allBtn) allBtn.classList.toggle('active', tag === '');
+  applyFilter();
+}}
+document.querySelectorAll('#diff-filters .filter-btn').forEach(function(btn) {{
+  btn.addEventListener('click', function() {{
+    activeDiff = parseInt(this.dataset.diff);
+    document.querySelectorAll('#diff-filters .filter-btn').forEach(function(b) {{ b.classList.remove('active'); }});
+    this.classList.add('active');
+    applyFilter();
+  }});
+}});
+document.querySelectorAll('#tag-filters .filter-btn').forEach(function(btn) {{
+  btn.addEventListener('click', function() {{ setTagFilter(this.dataset.tag); }});
+}});
+document.querySelectorAll('#sidebar-tag-filters .filter-btn').forEach(function(btn) {{
+  btn.addEventListener('click', function() {{ setTagFilter(this.dataset.tag); }});
+}});
+document.querySelectorAll('#article-list .tag').forEach(function(tag) {{
+  tag.addEventListener('click', function() {{ setTagFilter(this.dataset.tag); }});
+}});
 </script>
 </body>
 </html>"""
@@ -565,16 +661,23 @@ def generate_index_page(articles: list) -> str:
         except Exception:
             date_display = ""
 
-        tags_html = "".join([f'<span class="tag">#{t}</span>' for t in hashtags[:4]])
+        difficulty = article.get("difficulty", 1)
+        difficulty = max(1, min(5, int(difficulty) if str(difficulty).isdigit() else 1))
+        stars_filled = "★" * difficulty
+        stars_empty = "☆" * (5 - difficulty)
+        diff_labels = {1: "入門", 2: "初級", 3: "中級", 4: "上級", 5: "発展"}
+        diff_label = diff_labels.get(difficulty, "入門")
+
+        tags_html = "".join([f'<span class="tag" data-tag="{t}">#{t}</span>' for t in hashtags[:4]])
         price_badge = f'<span class="price-badge">¥{price}</span>' if price > 0 else '<span class="free-badge">無料</span>'
         summary_html = f'<p class="article-summary">{summary}</p>' if summary else ""
+        tags_data = " ".join(hashtags)
 
-        # 文字数から読了時間を計算
         char_count = len(article.get("content", ""))
         read_min = max(1, char_count // 400)
 
         cards_html += f"""
-<div class="article-card">
+<div class="article-card" data-difficulty="{difficulty}" data-tags="{tags_data}">
   <div class="card-tags">{tags_html}</div>
   <h2><a href="articles/{article_id}.html">{title}</a></h2>
   {summary_html}
@@ -582,6 +685,7 @@ def generate_index_page(articles: list) -> str:
     <div class="card-meta">
       <span class="date">{date_display}</span>
       <span class="date">約{read_min}分で読めます</span>
+      <span class="difficulty"><span class="difficulty-stars">{stars_filled}{stars_empty}</span><span class="difficulty-label">{diff_label}</span></span>
     </div>
     <div class="card-stats">
       {price_badge}
@@ -592,8 +696,16 @@ def generate_index_page(articles: list) -> str:
     if not cards_html:
         cards_html = '<div class="empty-state"><p>記事を準備中です。しばらくお待ちください。</p></div>'
 
-    header = HEADER_HTML.format(root="")
-    sidebar = SIDEBAR_HTML
+    # タグ一覧を全記事から収集（フィルター用）
+    all_tags = []
+    for a in articles:
+        for t in a.get("hashtags", []):
+            if t not in all_tags:
+                all_tags.append(t)
+    tag_filter_btns = "".join(f'<button class="filter-btn" data-tag="{t}">#{t}</button>' for t in all_tags[:12])
+
+    header = HEADER_HTML.format(root="", note_url=NOTE_CREATOR_URL)
+    sidebar = build_sidebar_html(tags=all_tags)
 
     index_url = f"{SITE_URL}/index.html"
     index_description = "パソコンを買ったばかりの方でもわかる。Claude・ChatGPT・GeminiなどのAIツールの使い方をわかりやすく解説します。"
@@ -641,7 +753,23 @@ def generate_index_page(articles: list) -> str:
   {header}
   <div class="layout">
     <main>
-      <div class="article-list">
+      <div class="filter-bar">
+        <label>難易度：</label>
+        <div class="filter-group" id="diff-filters">
+          <button class="filter-btn active" data-diff="0">すべて</button>
+          <button class="filter-btn" data-diff="1">★入門</button>
+          <button class="filter-btn" data-diff="2">★★初級</button>
+          <button class="filter-btn" data-diff="3">★★★中級</button>
+          <button class="filter-btn" data-diff="4">★★★★上級</button>
+          <button class="filter-btn" data-diff="5">★★★★★発展</button>
+        </div>
+        <label>タグ：</label>
+        <div class="filter-group" id="tag-filters">
+          <button class="filter-btn active" data-tag="">すべて</button>
+          {tag_filter_btns}
+        </div>
+      </div>
+      <div class="article-list" id="article-list">
         {cards_html}
       </div>
     </main>
@@ -666,6 +794,42 @@ document.querySelectorAll('pre').forEach(function(pre) {{
       setTimeout(function() {{ btn.textContent = 'コピー'; btn.classList.remove('copied'); }}, 2000);
     }});
   }});
+}});
+var activeDiff = 0, activeTag = '';
+function applyFilter() {{
+  document.querySelectorAll('#article-list .article-card').forEach(function(card) {{
+    var diff = parseInt(card.dataset.difficulty || '1');
+    var tags = card.dataset.tags || '';
+    var diffOk = activeDiff === 0 || diff === activeDiff;
+    var tagOk = activeTag === '' || tags.split(' ').indexOf(activeTag) >= 0;
+    card.classList.toggle('hidden', !(diffOk && tagOk));
+  }});
+}}
+function setTagFilter(tag) {{
+  activeTag = tag;
+  document.querySelectorAll('#tag-filters .filter-btn, #sidebar-tag-filters .filter-btn').forEach(function(b) {{
+    b.classList.toggle('active', b.dataset.tag === tag);
+  }});
+  var allBtn = document.querySelector('#tag-filters .filter-btn[data-tag=""]');
+  if (allBtn) allBtn.classList.toggle('active', tag === '');
+  applyFilter();
+}}
+document.querySelectorAll('#diff-filters .filter-btn').forEach(function(btn) {{
+  btn.addEventListener('click', function() {{
+    activeDiff = parseInt(this.dataset.diff);
+    document.querySelectorAll('#diff-filters .filter-btn').forEach(function(b) {{ b.classList.remove('active'); }});
+    this.classList.add('active');
+    applyFilter();
+  }});
+}});
+document.querySelectorAll('#tag-filters .filter-btn').forEach(function(btn) {{
+  btn.addEventListener('click', function() {{ setTagFilter(this.dataset.tag); }});
+}});
+document.querySelectorAll('#sidebar-tag-filters .filter-btn').forEach(function(btn) {{
+  btn.addEventListener('click', function() {{ setTagFilter(this.dataset.tag); }});
+}});
+document.querySelectorAll('#article-list .tag').forEach(function(tag) {{
+  tag.addEventListener('click', function() {{ setTagFilter(this.dataset.tag); }});
 }});
 </script>
 </body>
