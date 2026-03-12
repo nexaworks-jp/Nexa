@@ -30,7 +30,8 @@ class XPublisher:
         """ツイートを投稿する"""
         full_text = text
         if hashtags:
-            tags = " ".join([f"#{tag}" for tag in hashtags[:3]])
+            # ハッシュタグは2個まで（3個以上はエンゲージメント低下・シャドーバンリスク）
+            tags = " ".join([f"#{tag}" for tag in hashtags[:2]])
             if len(full_text) + len(tags) + 1 <= 280:
                 full_text = f"{full_text}\n{tags}"
 
@@ -46,12 +47,14 @@ class XPublisher:
             response = self.client.create_tweet(text=full_text)
             tweet_id = response.data["id"]
             print(f"[XPublisher] 投稿成功: tweet_id={tweet_id}")
-            return {
+            result = {
                 "success": True,
                 "tweet_id": tweet_id,
                 "text": full_text,
                 "posted_at": datetime.now().isoformat()
             }
+            _save_tweet_id(tweet_id)
+            return result
         except tweepy.TooManyRequests:
             print("[XPublisher] レート制限。15分待機...")
             time.sleep(900)
@@ -71,6 +74,25 @@ class XPublisher:
             f.write(text)
         print(f"[XPublisher] ログ保存: {filename}")
         return {"success": True, "saved_to": filename}
+
+
+def _save_tweet_id(tweet_id: str):
+    """投稿したtweetIDをmemory/tweet_history.jsonに保存（エンゲージメント追跡用）"""
+    import os
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory", "tweet_history.json")
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    history = []
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                history = json.load(f)
+        except Exception:
+            pass
+    history.append({"tweet_id": tweet_id, "posted_at": datetime.now().isoformat()})
+    # 直近200件のみ保持
+    history = history[-200:]
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
 
 
 def publish(config: dict, posts: list, dry_run: bool = False) -> list:

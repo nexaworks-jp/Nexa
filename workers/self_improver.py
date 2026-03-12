@@ -39,6 +39,16 @@ def analyze_performance(config: dict, all_results: dict, memory: dict) -> dict:
         "site_analytics": analytics,
     }
 
+    # シャドーバン健全性データを読み込む
+    x_health = {}
+    try:
+        health_path = os.path.join(BASE_DIR, "memory", "x_health.json")
+        if os.path.exists(health_path):
+            with open(health_path, "r", encoding="utf-8") as f:
+                x_health = json.load(f)
+    except Exception:
+        pass
+
     analytics_section = ""
     if analytics:
         analytics_section = f"""
@@ -54,6 +64,14 @@ def analyze_performance(config: dict, all_results: dict, memory: dict) -> dict:
 - PVが多い記事のタグ・難易度 → コンテンツ戦略に反映する
 - 流入元がSNSなら → X投稿との連携を強化
 - 流入元が検索なら → SEOキーワードをさらに最適化
+
+【Xシャドーバン状況】
+- シャドーバンリスク: {x_health.get('shadowban_risk', 'unknown')}
+- 平均エンゲージメント: {x_health.get('avg_engagement', 'N/A')}
+- 評価ツイート数: {x_health.get('tweet_count', 0)}件
+- リスクが"high"の場合: x_post_per_dayを4以下に下げ、投稿パターンをより多様化する
+- リスクが"medium"の場合: コンテンツスタイルを変えて様子を見る
+- リスクが"low"の場合: 現状維持またはゆっくり頻度を上げる
 
 【X投稿戦略の考え方】
 - 基本方針: 最初は有益な情報発信だけを行い、フォロワーの信頼を獲得することを最優先にする

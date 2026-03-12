@@ -80,6 +80,87 @@ def fetch_popular_tweets_via_api(config: dict, queries: list, max_per_query: int
         return []
 
 
+def check_engagement_health(config: dict) -> dict:
+    """
+    直近の自分のツイートのエンゲージメントを確認し、シャドーバンの可能性を評価する。
+    エンゲージメント率が急落していればシャドーバンを疑う。
+    戻り値: { "shadowban_risk": "low/medium/high", "avg_engagement": float, "tweet_count": int }
+    """
+    try:
+        import tweepy
+        x_cfg = config.get("x_twitter", {})
+        bearer = x_cfg.get("bearer_token", "")
+        access_token = x_cfg.get("access_token", "")
+        access_token_secret = x_cfg.get("access_token_secret", "")
+        api_key = x_cfg.get("api_key", "")
+        api_secret = x_cfg.get("api_secret", "")
+        if not all([bearer, access_token, api_key]):
+            return {"shadowban_risk": "unknown", "reason": "API未設定"}
+
+        client_tw = tweepy.Client(
+            bearer_token=bearer,
+            consumer_key=api_key, consumer_secret=api_secret,
+            access_token=access_token, access_token_secret=access_token_secret
+        )
+
+        # tweet_history.json から直近のtweetIDを取得
+        history_path = os.path.join(BASE_DIR, "memory", "tweet_history.json")
+        if not os.path.exists(history_path):
+            return {"shadowban_risk": "unknown", "reason": "投稿履歴なし"}
+
+        with open(history_path, "r", encoding="utf-8") as f:
+            history = json.load(f)
+
+        recent_ids = [h["tweet_id"] for h in history[-20:]]
+        if not recent_ids:
+            return {"shadowban_risk": "unknown", "reason": "投稿履歴なし"}
+
+        # APIでエンゲージメント取得
+        tweets_data = client_tw.get_tweets(
+            ids=recent_ids,
+            tweet_fields=["public_metrics"]
+        )
+        if not tweets_data or not tweets_data.data:
+            return {"shadowban_risk": "unknown", "reason": "API取得失敗"}
+
+        engagements = []
+        for t in tweets_data.data:
+            m = t.public_metrics or {}
+            eng = m.get("like_count", 0) + m.get("retweet_count", 0) * 2 + m.get("reply_count", 0)
+            engagements.append(eng)
+
+        avg_eng = sum(engagements) / len(engagements) if engagements else 0
+        tweet_count = len(engagements)
+
+        # リスク評価（平均エンゲージメントが著しく低い場合）
+        # 新アカウント初期は低くて当然なので緩めの基準
+        if avg_eng < 0.1 and tweet_count >= 10:
+            risk = "high"
+        elif avg_eng < 0.5 and tweet_count >= 10:
+            risk = "medium"
+        else:
+            risk = "low"
+
+        result = {
+            "shadowban_risk": risk,
+            "avg_engagement": round(avg_eng, 2),
+            "tweet_count": tweet_count,
+            "checked_at": datetime.now().isoformat()
+        }
+
+        # memory に保存
+        health_path = os.path.join(BASE_DIR, "memory", "x_health.json")
+        with open(health_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+
+        print(f"[XResearcher] エンゲージメント健全性: リスク={risk} 平均={avg_eng:.2f} ({tweet_count}件)")
+        return result
+
+    except Exception as e:
+        print(f"[XResearcher] エンゲージメントチェックエラー: {e}")
+        return {"shadowban_risk": "unknown", "reason": str(e)}
+
+
 def analyze_tweet_patterns(client: anthropic.Anthropic, tweets: list, current_style: str) -> dict:
     """バズったツイートをClaudeが分析し、学習ポイントを抽出する"""
     if not tweets:
@@ -111,14 +192,22 @@ def analyze_tweet_patterns(client: anthropic.Anthropic, tweets: list, current_st
 2. 読者が反応しやすい切り口・言い回し
 3. 文字数・改行・絵文字の使い方の傾向
 4. 現在のスタイルガイドに取り入れるべき改善点
-5. 避けるべきパターン
+5. シャドーバンリスクになる避けるべきパターン（ハッシュタグ過多・外部リンク多用・エンゲージメント誘導・同一パターン繰り返しなど）
+
+【シャドーバン回避の重要知識（2025年版）】
+- ハッシュタグは1〜2個が最適。3個以上でエンゲージメント17%低下
+- 外部リンクを毎ポストに入れるとリーチが下がる（X内コンテンツを優遇するアルゴリズム）
+- 「RTして」「いいねして」等のエンゲージメント誘導はスパム判定リスク
+- 同じ投稿パターンの繰り返しがBot判定されやすい
+- 投稿後15分の初動エンゲージメントがアルゴリズム評価で最重要
 
 JSON形式で出力：
 {{
   "key_patterns": ["パターン1", "パターン2", "パターン3"],
   "high_engagement_formats": ["フォーマット1", "フォーマット2"],
   "style_improvements": ["改善点1", "改善点2"],
-  "avoid_patterns": ["避けるべき1", "避けるべき2"],
+  "avoid_patterns": ["避けるべき1（シャドーバンリスク含む）", "避けるべき2"],
+  "shadowban_avoidance_tips": ["シャドーバン対策1", "シャドーバン対策2"],
   "new_post_examples": ["例文1（140字以内）", "例文2（140字以内）"],
   "summary": "学習まとめ（100文字以内）",
   "update_style_guide": true
@@ -214,6 +303,13 @@ def run(config: dict):
         return
 
     claude = anthropic.Anthropic(api_key=api_key)
+
+    # エンゲージメント健全性チェック（シャドーバン検知）
+    health = check_engagement_health(config)
+    if health.get("shadowban_risk") == "high":
+        print("[XResearcher] ⚠️ シャドーバンの可能性が高いです！投稿頻度を下げることを推奨。")
+    elif health.get("shadowban_risk") == "medium":
+        print("[XResearcher] ⚠️ エンゲージメントが低め。コンテンツパターンを多様化してください。")
 
     # 学習対象クエリを memory から読み込む（自己改善で追加可能）
     insights_path = os.path.join(BASE_DIR, "memory", "x_insights.json")
