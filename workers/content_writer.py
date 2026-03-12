@@ -36,7 +36,9 @@ def load_sophia_persona(style_type: str = "note") -> str:
 
 
 def load_sophia_learnings() -> str:
-    """memory/sophia_learnings.json から学習済みの人間らしい表現をプロンプト用テキストに変換"""
+    """memory/sophia_learnings.json から学習済み表現をランダムに少量だけ取り出す。
+    全件注入すると学習に引きずられすぎるため、毎回3件程度をサンプリング。
+    """
     path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory", "sophia_learnings.json")
     if not os.path.exists(path):
         return ""
@@ -46,21 +48,18 @@ def load_sophia_learnings() -> str:
     except Exception:
         return ""
 
-    parts = []
-    if data.get("expressions"):
-        parts.append("自然な言い回し: " + "、".join(data["expressions"][:8]))
-    if data.get("sentence_endings"):
-        parts.append("文末表現: " + "、".join(data["sentence_endings"][:5]))
-    if data.get("opening_phrases"):
-        parts.append("書き出し例: " + "、".join(data["opening_phrases"][:4]))
-    if data.get("emotional_patterns"):
-        parts.append("感情表現: " + "、".join(data["emotional_patterns"][:5]))
-    if data.get("sophia_voice_tips"):
-        parts.append("口調のコツ: " + " / ".join(data["sophia_voice_tips"][:3]))
+    # 全カテゴリをフラットにまとめてランダムに3件だけ使う
+    pool = []
+    pool.extend(data.get("expressions", []))
+    pool.extend(data.get("sentence_endings", []))
+    pool.extend(data.get("opening_phrases", []))
+    pool.extend(data.get("emotional_patterns", []))
 
-    if not parts:
+    if not pool:
         return ""
-    return "【Xリプライから学んだ自然な表現（積極的に取り入れること）】\n" + "\n".join(parts)
+
+    sampled = random.sample(pool, min(3, len(pool)))
+    return "【参考にしてよい自然な表現（使いすぎない程度に）】" + "、".join(sampled)
 
 
 def load_seo_title_templates() -> list:

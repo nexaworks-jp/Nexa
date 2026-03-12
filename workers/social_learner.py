@@ -169,12 +169,15 @@ JSONで出力：
 
 
 def merge_learnings(existing: dict, new_patterns: dict) -> dict:
-    """既存の学習と新しいパターンをマージ（重複除去・上限管理）"""
-    MAX_ITEMS = 20
+    """既存の学習と新しいパターンをマージ（重複除去・上限管理）
+    上限は少なめに設定し、古いものは自動で忘れる。
+    影響を受けすぎないよう、どのカテゴリも最大15件。
+    """
+    MAX_ITEMS = 15  # 人間らしく「自然に忘れる」上限
 
     def merge_list(old: list, new: list) -> list:
         combined = list(dict.fromkeys(old + new))
-        return combined[-MAX_ITEMS:]
+        return combined[-MAX_ITEMS:]  # 古いものから削除（LRU的）
 
     return {
         "expressions": merge_list(existing.get("expressions", []), new_patterns.get("expressions", [])),
