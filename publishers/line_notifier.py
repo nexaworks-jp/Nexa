@@ -231,6 +231,20 @@ def notify_equipment_needed(config: dict, opportunities: list):
     )
 
 
+def notify_sofia_proposal(config: dict, item: dict):
+    """ソフィア進化案をオーナーに提出。承認待ちになる。"""
+    line = config.get("line", {})
+    msg = (
+        f"🌱 ソフィア進化案 #{item.get('priority', '?')}\n\n"
+        f"【機能名】{item.get('title', '')}\n"
+        f"【内容】{item.get('description', '')}\n"
+        f"【バランス】{item.get('balance', '')}\n\n"
+        "OKなら「sofia OK」、NGなら「sofia NG」と返信してください。\n"
+        "NGの場合は理由も教えてもらえると次回に活かします。"
+    )
+    text(line.get("channel_access_token", ""), line.get("user_id", ""), msg)
+
+
 def notify_cost_warning(config: dict, cost_usd: float, limit_usd: float):
     """API費用警告"""
     line = config.get("line", {})

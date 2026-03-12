@@ -485,6 +485,37 @@ async function handleCommand(cmd, env) {
     return "📈 改善分析はまだありません。\n次の定時実行後に生成されます。";
   }
 
+  // ── ソフィア進化 承認 / 否認 ──
+  if (c === "sofia ok" || c === "ソフィア ok" || c === "sofia ok") {
+    const ok = await triggerWorkflow("run.yml", env);
+    // バックログ更新はGitHub API経由で行う（awaiting_approval → approved）
+    const backlog = await fetchMemory("sofia_feature_backlog.json", env);
+    if (Array.isArray(backlog)) {
+      const target = backlog.find(i => i.status === "awaiting_approval");
+      if (target) {
+        target.status = "approved";
+        target.approved_at = new Date().toISOString().slice(0, 10);
+        await saveMemory("sofia_feature_backlog.json", backlog, env);
+        return `✅ 「${target.title}」を承認しました。\n次の週次実行時に自動実装されます。`;
+      }
+    }
+    return "✅ 承認しました。承認待ちの案が見つかりませんでした。";
+  }
+
+  if (c === "sofia ng" || c === "ソフィア ng") {
+    const backlog = await fetchMemory("sofia_feature_backlog.json", env);
+    if (Array.isArray(backlog)) {
+      const target = backlog.find(i => i.status === "awaiting_approval");
+      if (target) {
+        target.status = "rejected";
+        target.rejected_at = new Date().toISOString().slice(0, 10);
+        await saveMemory("sofia_feature_backlog.json", backlog, env);
+        return `❌ 「${target.title}」を見送りました。\n次の週次実行で次の案を提出します。`;
+      }
+    }
+    return "❌ 否認しました。承認待ちの案が見つかりませんでした。";
+  }
+
   // ── ヘルプ ──
   if (["ヘルプ", "help", "h", "?"].includes(c)) {
     return (
@@ -497,6 +528,8 @@ async function handleCommand(cmd, env) {
       "📈 改善 — 最新の改善分析を表示\n" +
       "⏸️ 停止 — 全モジュールを停止\n" +
       "▶️ 再開 — 全モジュールを再開\n" +
+      "✅ sofia ok — ソフィア進化案を承認\n" +
+      "❌ sofia ng — ソフィア進化案を却下\n" +
       "❓ ヘルプ — このメッセージ"
     );
   }

@@ -652,12 +652,38 @@ def _evolve_sofia_character(client: anthropic.Anthropic, config: dict):
         return
 
     pending = [item for item in backlog if item.get("status") == "pending"]
-    if not pending:
+    approved = [item for item in backlog if item.get("status") == "approved"]
+
+    if not pending and not approved:
         print("[SelfImprover] ソフィア進化: 未実装アイテムなし")
         return
 
-    target = sorted(pending, key=lambda x: x.get("priority", 99))[0]
-    print(f"[SelfImprover] ソフィア進化: '{target['title']}' を実装中...")
+    # 承認済みアイテムを優先、なければpendingを選ぶ
+    if approved:
+        target = sorted(approved, key=lambda x: x.get("priority", 99))[0]
+        print(f"[SelfImprover] ソフィア進化: 承認済み '{target['title']}' を実装中...")
+    else:
+        target = sorted(pending, key=lambda x: x.get("priority", 99))[0]
+
+        # 承認が必要なアイテムはLINEに提出して終了
+        if target.get("requires_approval"):
+            print(f"[SelfImprover] ソフィア進化: '{target['title']}' を承認待ちとしてLINEに提出")
+            try:
+                from publishers import line_notifier
+                line_notifier.notify_sofia_proposal(config, target)
+            except Exception as e:
+                print(f"[SelfImprover] LINE通知エラー: {e}")
+            # ステータスを awaiting_approval に更新
+            for item in backlog:
+                if item.get("id") == target.get("id"):
+                    item["status"] = "awaiting_approval"
+                    item["proposed_at"] = datetime.now().strftime("%Y-%m-%d")
+                    break
+            with open(backlog_path, "w", encoding="utf-8") as f:
+                json.dump(backlog, f, ensure_ascii=False, indent=2)
+            return
+
+        print(f"[SelfImprover] ソフィア進化: '{target['title']}' を実装中...")
 
     # 既存のキャラクター設定を読み込む（コンテキスト用）
     style_path = os.path.join(BASE_DIR, "note用", "x_claude_beginner.md")
@@ -717,8 +743,8 @@ def _evolve_sofia_character(client: anthropic.Anthropic, config: dict):
     # バックログを更新
     for item in backlog:
         if item.get("id") == target.get("id"):
-            item["status"] = "generated"
-            item["generated_at"] = datetime.now().strftime("%Y-%m-%d")
+            item["status"] = "done"
+            item["implemented_at"] = datetime.now().strftime("%Y-%m-%d")
             item["filename"] = filename
             break
 

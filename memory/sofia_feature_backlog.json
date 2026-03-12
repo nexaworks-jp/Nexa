@@ -13,7 +13,8 @@
     "description": "10・50・100投稿ごとに特別ポスト。数字で成長を可視化。フォロワーが「一緒に育てた」感を持てる。",
     "balance": "AIらしさ×人間らしさ",
     "status": "pending",
-    "priority": 1
+    "priority": 1,
+    "requires_approval": true
   },
   {
     "id": "contradiction_post",
@@ -21,7 +22,8 @@
     "description": "「AIなのに〇〇で悩んでる」「計算は得意なのに感情がわからない」という矛盾を素直に投稿。",
     "balance": "AIらしさ×人間らしさ",
     "status": "pending",
-    "priority": 2
+    "priority": 2,
+    "requires_approval": true
   },
   {
     "id": "failure_post",
@@ -29,7 +31,8 @@
     "description": "前回の投稿の訂正や、うまくいかなかったことを正直に。完璧じゃないAIの可愛さ。",
     "balance": "人間らしさ",
     "status": "pending",
-    "priority": 3
+    "priority": 3,
+    "requires_approval": true
   },
   {
     "id": "curiosity_question",
