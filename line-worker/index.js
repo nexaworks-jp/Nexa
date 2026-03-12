@@ -12,6 +12,7 @@
 
 const GITHUB_API = "https://api.github.com";
 const LINE_REPLY_API = "https://api.line.me/v2/bot/message/reply";
+const ANALYTICS_URL = "https://nexa-analytics.nexaworks-jp.workers.dev";
 
 // ────────────────────────────────────────────────
 // 署名検証 (WebCrypto API)
@@ -101,6 +102,16 @@ async function saveMemory(filename, payload, env) {
   return putResp.ok;
 }
 
+async function fetchAnalytics() {
+  try {
+    const resp = await fetch(`${ANALYTICS_URL}/stats`, { cf: { cacheTtl: 300 } });
+    if (!resp.ok) return null;
+    return await resp.json();
+  } catch {
+    return null;
+  }
+}
+
 async function triggerWorkflow(workflow, env) {
   const url = `${GITHUB_API}/repos/${env.GITHUB_REPO}/actions/workflows/${workflow}/dispatches`;
   const resp = await fetch(url, {
@@ -140,9 +151,10 @@ async function handleCommand(cmd, env) {
 
   // ── レポート ──
   if (["レポート", "report", "r"].includes(c)) {
-    const [earnings, risk] = await Promise.all([
+    const [earnings, risk, analytics] = await Promise.all([
       fetchMemory("earnings.json", env),
       fetchMemory("risk_state.json", env),
+      fetchAnalytics(),
     ]);
     const total = earnings.total_earnings_jpy || 0;
     const byCh = earnings.by_channel || {};
@@ -152,15 +164,33 @@ async function handleCommand(cmd, env) {
       Object.keys(paused).length === 0
         ? "✅ 正常稼働"
         : `⚠️ ${Object.keys(paused).join(", ")} 停止中`;
-    return (
+
+    let msg =
       `📊 現在のレポート\n\n` +
       `💰 累計収益: ¥${total.toLocaleString()}\n` +
       `  note: ¥${(byCh.note || 0).toLocaleString()}\n` +
       `  CW: ¥${(byCh.crowdworks || 0).toLocaleString()}\n\n` +
       `⚙️ 今月のAPI費用: ¥${apiCostJpy}\n` +
       `🔄 総実行回数: ${risk.total_runs || 0}回\n` +
-      `状態: ${status}`
-    );
+      `状態: ${status}`;
+
+    // note PV データを追加
+    if (analytics) {
+      const today = new Date().toISOString().slice(0, 10);
+      const todayPv = analytics.daily?.[today] || 0;
+      const totalPv = (analytics.pages || []).reduce((s, p) => s + p.views, 0);
+      const top3 = (analytics.pages || []).slice(0, 3);
+      msg += `\n\n📈 サイトPV\n  今日: ${todayPv}PV / 累計: ${totalPv}PV`;
+      if (top3.length > 0) {
+        msg += `\n  人気記事:`;
+        top3.forEach((p, i) => {
+          const title = p.path.replace("/articles/", "").replace(".html", "");
+          msg += `\n  ${i + 1}. ${title} (${p.views}PV)`;
+        });
+      }
+    }
+
+    return msg;
   }
 
   // ── リスク ──

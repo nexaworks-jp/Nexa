@@ -145,3 +145,11 @@ print(ns[0] if ns else '')" 2>/dev/null || echo "")
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
           cd analytics-worker && npx wrangler deploy
+
+      - name: Notify LINE on failure
+        if: failure()
+        run: |
+          curl -s -X POST https://api.line.me/v2/bot/message/push \
+            -H "Authorization: Bearer ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"to\": \"${{ secrets.LINE_USER_ID }}\", \"messages\": [{\"type\": \"text\", \"text\": \"⚠️ Nexa エラー発生\n\nワークフロー: run.yml\n時刻: $(date +'%Y-%m-%d %H:%M') UTC\n\n詳細はGitHub Actionsで確認してください。\nhttps://github.com/${{ github.repository }}/actions\"}]}"
