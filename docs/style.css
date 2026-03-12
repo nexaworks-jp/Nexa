@@ -134,6 +134,8 @@ header {
   transition: all .15s;
 }
 .sidebar-tag:hover { background: var(--tag-bg); color: var(--tag-color); border-color: #b8e6c8; }
+.tag { cursor: pointer; }
+.tag:hover { opacity: .75; }
 .about-text { font-size: 13px; color: var(--text-sub); line-height: 1.7; }
 .about-text strong { color: var(--text); }
 .btn-note {
@@ -197,6 +199,53 @@ header {
 }
 .paid-wall h3 { font-size: 20px; font-weight: 700; margin-bottom: 10px; }
 .paid-wall p { color: var(--text-sub); font-size: 14px; margin-bottom: 24px; }
+
+/* Nexaバナー */
+.nexa-banner {
+  background: #1a1a2e;
+  color: #a0a8c0;
+  text-align: center;
+  font-size: 11px;
+  padding: 5px;
+  letter-spacing: .08em;
+}
+.nexa-banner strong { color: #fff; }
+
+/* 難易度 */
+.difficulty { display: flex; align-items: center; gap: 4px; }
+.difficulty-stars { color: #f5a623; font-size: 13px; letter-spacing: -1px; }
+.difficulty-label { font-size: 11px; color: var(--text-sub); }
+
+/* フィルターバー */
+.filter-bar {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin-bottom: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+.filter-bar label { font-size: 12px; font-weight: 700; color: var(--text-sub); white-space: nowrap; }
+.filter-group { display: flex; flex-wrap: wrap; gap: 6px; }
+.filter-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-sub);
+  cursor: pointer;
+  transition: all .15s;
+}
+.filter-btn:hover, .filter-btn.active {
+  background: var(--tag-bg);
+  color: var(--tag-color);
+  border-color: #b8e6c8;
+}
+.article-card.hidden { display: none; }
 
 /* フッター */
 footer { text-align: center; padding: 40px 0; color: #b0b8c1; font-size: 12px; border-top: 1px solid var(--border); background: var(--white); margin-top: 40px; }

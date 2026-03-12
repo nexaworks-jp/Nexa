@@ -16,6 +16,27 @@ DATA_FILE = os.path.join(DOCS_DIR, "articles.json")
 # サイトのベースURL（カスタムドメイン設定後に変更する）
 SITE_URL = "https://nexa.nexaworks-jp.workers.dev"
 
+# アナリティクスWorkerのURL
+ANALYTICS_URL = "https://nexa-analytics.nexaworks-jp.workers.dev"
+
+# ページビュービーコン（両テンプレート共通）
+ANALYTICS_BEACON_JS = """
+(function() {
+  var start = Date.now();
+  var path = location.pathname;
+  var ref = document.referrer || '';
+  function send(dur) {
+    try {
+      navigator.sendBeacon
+        ? navigator.sendBeacon('""" + ANALYTICS_URL + """/track', JSON.stringify({path:path,duration_ms:dur,referrer:ref}))
+        : fetch('""" + ANALYTICS_URL + """/track', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({path:path,duration_ms:dur,referrer:ref}),keepalive:true});
+    } catch(e){}
+  }
+  send(0);
+  window.addEventListener('pagehide', function(){ send(Date.now()-start); });
+})();
+"""
+
 
 def load_seo_settings() -> dict:
     """memory/seo_settings.json を読み込む"""
@@ -534,6 +555,8 @@ def generate_article_page(article: dict) -> str:
         ]
     }, ensure_ascii=False)
 
+    beacon = ANALYTICS_BEACON_JS
+
     return f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -615,6 +638,7 @@ function applyFilter() {{
   }});
 }}
 function setTagFilter(tag) {{
+  if (activeTag === tag) tag = '';
   activeTag = tag;
   document.querySelectorAll('#tag-filters .filter-btn, #sidebar-tag-filters .filter-btn').forEach(function(b) {{
     b.classList.toggle('active', b.dataset.tag === tag);
@@ -625,9 +649,10 @@ function setTagFilter(tag) {{
 }}
 document.querySelectorAll('#diff-filters .filter-btn').forEach(function(btn) {{
   btn.addEventListener('click', function() {{
-    activeDiff = parseInt(this.dataset.diff);
-    document.querySelectorAll('#diff-filters .filter-btn').forEach(function(b) {{ b.classList.remove('active'); }});
-    this.classList.add('active');
+    var d = parseInt(this.dataset.diff);
+    if (activeDiff === d) d = 0;
+    activeDiff = d;
+    document.querySelectorAll('#diff-filters .filter-btn').forEach(function(b) {{ b.classList.toggle('active', parseInt(b.dataset.diff) === d); }});
     applyFilter();
   }});
 }});
@@ -640,6 +665,7 @@ document.querySelectorAll('#sidebar-tag-filters .filter-btn').forEach(function(b
 document.querySelectorAll('#article-list .tag').forEach(function(tag) {{
   tag.addEventListener('click', function() {{ setTagFilter(this.dataset.tag); }});
 }});
+{beacon}
 </script>
 </body>
 </html>"""
@@ -725,6 +751,8 @@ def generate_index_page(articles: list) -> str:
         }
     }, ensure_ascii=False)
 
+    beacon = ANALYTICS_BEACON_JS
+
     return f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
@@ -806,6 +834,7 @@ function applyFilter() {{
   }});
 }}
 function setTagFilter(tag) {{
+  if (activeTag === tag) tag = '';
   activeTag = tag;
   document.querySelectorAll('#tag-filters .filter-btn, #sidebar-tag-filters .filter-btn').forEach(function(b) {{
     b.classList.toggle('active', b.dataset.tag === tag);
@@ -816,9 +845,10 @@ function setTagFilter(tag) {{
 }}
 document.querySelectorAll('#diff-filters .filter-btn').forEach(function(btn) {{
   btn.addEventListener('click', function() {{
-    activeDiff = parseInt(this.dataset.diff);
-    document.querySelectorAll('#diff-filters .filter-btn').forEach(function(b) {{ b.classList.remove('active'); }});
-    this.classList.add('active');
+    var d = parseInt(this.dataset.diff);
+    if (activeDiff === d) d = 0;
+    activeDiff = d;
+    document.querySelectorAll('#diff-filters .filter-btn').forEach(function(b) {{ b.classList.toggle('active', parseInt(b.dataset.diff) === d); }});
     applyFilter();
   }});
 }});
@@ -831,6 +861,7 @@ document.querySelectorAll('#sidebar-tag-filters .filter-btn').forEach(function(b
 document.querySelectorAll('#article-list .tag').forEach(function(tag) {{
   tag.addEventListener('click', function() {{ setTagFilter(this.dataset.tag); }});
 }});
+{beacon}
 </script>
 </body>
 </html>"""

@@ -161,13 +161,21 @@ def score_and_select(client: anthropic.Anthropic, candidates: list[dict],
         max_tokens=1000,
         messages=[{
             "role": "user",
-            "content": f"""以下の候補から、日本語AI初心者向けサイトに最適な記事トピックを{num_topics}つ選んでください。
+            "content": f"""以下の候補から、AI解説サイトに最適な記事トピックを{num_topics}つ選んでください。
+
+【サイトのコンセプト】
+- メイン: Claude・AIの使い方を初心者向けに解説
+- 実践系: Claude Code（Skills/CLAUDE.md/MCP/スラッシュコマンド）の実用Tipsも扱う
 
 【選定基準（重要度順）】
-1. 初心者向け度(30%): パソコン初心者でも「なるほど！」と思えるか
-2. バズ度(30%): 今話題になっているか、関心が高いか
-3. 新鮮さ(25%): 最近の話題か
+1. バズ度・需要(35%): 今話題か、検索需要が高いか
+2. 実用性(30%): 読んで「すぐ試せる」「役に立つ」内容か
+3. 新鮮さ(20%): 過去記事と重複しないか
 4. AI関連度(15%): AIに関する内容か
+
+【トピックバランス（{num_topics}本中）】
+- AI初心者向け記事: {num_topics - 1}本（登録・使い方・比較など）
+- Claude Code実践系記事: 1本（Skills/CLAUDE.md/MCPなど開発者向け実用Tips）
 
 【除外条件】
 - 以下の過去記事と似ているタイトルは除外してください：

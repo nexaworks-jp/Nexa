@@ -19,6 +19,13 @@ def analyze_performance(config: dict, all_results: dict, memory: dict) -> dict:
     risk_state = memory.get("risk_state", {})
     strategy = memory.get("strategy", {})
 
+    # アナリティクスデータを読み込む
+    try:
+        from workers.analytics_fetcher import get_analytics_summary
+        analytics = get_analytics_summary(BASE_DIR + "/memory")
+    except Exception:
+        analytics = {}
+
     summary = {
         "total_earnings_jpy": earnings.get("total_earnings_jpy", 0),
         "by_channel": earnings.get("by_channel", {}),
@@ -28,8 +35,26 @@ def analyze_performance(config: dict, all_results: dict, memory: dict) -> dict:
         "total_runs": risk_state.get("total_runs", 0),
         "latest_results_summary": {
             k: "成功" if v else "スキップ" for k, v in all_results.items()
-        }
+        },
+        "site_analytics": analytics,
     }
+
+    analytics_section = ""
+    if analytics:
+        analytics_section = f"""
+【サイトアクセスデータ（実測値）】
+- 直近7日PV: {analytics.get('pv_7d', 0)}
+- 直近30日PV: {analytics.get('pv_30d', 0)}
+- 平均滞在時間: {analytics.get('avg_time_on_page_sec', 0)}秒
+- トップ記事: {json.dumps(analytics.get('top_articles', []), ensure_ascii=False)}
+- 流入元TOP5: {json.dumps(analytics.get('top_referrers', []), ensure_ascii=False)}
+
+アナリティクスの活用指針:
+- 滞在時間が長い記事 → 同ジャンルの記事を増やす
+- PVが多い記事のタグ・難易度 → コンテンツ戦略に反映する
+- 流入元がSNSなら → X投稿との連携を強化
+- 流入元が検索なら → SEOキーワードをさらに最適化
+"""
 
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
@@ -41,6 +66,7 @@ def analyze_performance(config: dict, all_results: dict, memory: dict) -> dict:
 
 【現在の状態】
 {json.dumps(summary, ensure_ascii=False, indent=2)}
+{analytics_section}
 
 【API実行スケジュール最適化の考え方】
 - 収益が出ているチャネルは実行頻度を上げる（saas_weekdaysを増やすなど）
@@ -439,6 +465,13 @@ def run(config: dict, all_results: dict, memory: dict, weekly: bool = False) -> 
 
         # ソース重みの自動更新
         update_source_weights(memory, analysis)
+
+        # アナリティクスデータを取得・保存（常時）
+        try:
+            from workers.analytics_fetcher import run as fetch_analytics
+            fetch_analytics(BASE_DIR + "/memory")
+        except Exception as e:
+            print(f"[SelfImprover] アナリティクス取得エラー（無視）: {e}")
 
         # リンク文言・SEO設定の最適化（週次のみ）
         if weekly:

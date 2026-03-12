@@ -3,52 +3,56 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI初心者ガイド</title>
-  <meta name="description" content="パソコンを買ったばかりの方でもわかる。AIツールの使い方をわかりやすく解説します。">
+  <title>AI初心者ガイド | AIツールの使い方をわかりやすく解説</title>
+  <meta name="description" content="パソコンを買ったばかりの方でもわかる。Claude・ChatGPT・GeminiなどのAIツールの使い方をわかりやすく解説します。">
+  <meta name="keywords" content="AI初心者, 人工知能 使い方, Claude, ChatGPT, 生成AI, AI活用術, プロンプト入門, 副業 AI">
+  <link rel="canonical" href="https://nexa.nexaworks-jp.workers.dev/index.html">
+  <!-- OGP -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="AI初心者ガイド | AIツールの使い方をわかりやすく解説">
+  <meta property="og:description" content="パソコンを買ったばかりの方でもわかる。Claude・ChatGPT・GeminiなどのAIツールの使い方をわかりやすく解説します。">
+  <meta property="og:url" content="https://nexa.nexaworks-jp.workers.dev/index.html">
+  <meta property="og:site_name" content="AI初心者ガイド">
+  <meta property="og:locale" content="ja_JP">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="AI初心者ガイド">
+  <meta name="twitter:description" content="パソコンを買ったばかりの方でもわかる。Claude・ChatGPT・GeminiなどのAIツールの使い方をわかりやすく解説します。">
+  <!-- JSON-LD -->
+  <script type="application/ld+json">{"@context": "https://schema.org", "@type": "WebSite", "name": "AI初心者ガイド", "url": "https://nexa.nexaworks-jp.workers.dev", "description": "パソコンを買ったばかりの方でもわかる。Claude・ChatGPT・GeminiなどのAIツールの使い方をわかりやすく解説します。", "inLanguage": "ja", "potentialAction": {"@type": "SearchAction", "target": "https://nexa.nexaworks-jp.workers.dev/index.html?q={search_term_string}", "query-input": "required name=search_term_string"}}</script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <header>
+  <div class="nexa-banner"><strong>【Nexa】</strong> 自律型AIが毎日更新する、AI初心者のための解説サイト</div>
+<header>
   <div class="header-inner">
     <a class="logo" href="index.html">AI初心者ガイド</a>
     <nav class="header-nav">
       <a href="index.html">記事一覧</a>
-      <a href="https://note.com" target="_blank" rel="noopener">note</a>
+      <a href="https://note.com/youth_waster" target="_blank" rel="noopener">note</a>
     </nav>
   </div>
 </header>
   <div class="layout">
     <main>
-      <div class="article-list">
-        
-<div class="article-card">
-  <div class="card-tags"><span class="tag">#Claude</span><span class="tag">#登録方法</span><span class="tag">#AI入門</span><span class="tag">#始め方</span></div>
-  <h2><a href="articles/20260312_Claude______2.html">Claudeの始め方・登録方法【画像で解説】</a></h2>
-  <p class="article-summary">Claudeを使ってみたいけど登録が不安…という方へ。スマホでもパソコンでも5分で始められます。手順をわかりやすく解説します。</p>
-  <div class="card-footer">
-    <div class="card-meta">
-      <span class="date">2026年03月12日</span>
-      <span class="date">約1分で読めます</span>
-    </div>
-    <div class="card-stats">
-      <span class="free-badge">無料</span>
-    </div>
-  </div>
-</div>
-<div class="article-card">
-  <div class="card-tags"><span class="tag">#Claude</span><span class="tag">#AI入門</span><span class="tag">#初心者</span><span class="tag">#ChatGPT比較</span></div>
-  <h2><a href="articles/20260312_Claude_____.html">Claudeって何？ChatGPTと何が違うの？【初心者向け解説】</a></h2>
-  <p class="article-summary">最近よく聞く「Claude（クロード）」。ChatGPTとどう違うの？という疑問にわかりやすく答えます。パソコンを買ったばかりの方でも大丈夫。</p>
-  <div class="card-footer">
-    <div class="card-meta">
-      <span class="date">2026年03月12日</span>
-      <span class="date">約2分で読めます</span>
-    </div>
-    <div class="card-stats">
-      <span class="free-badge">無料</span>
-    </div>
-  </div>
-</div>
+      <div class="filter-bar">
+        <label>難易度：</label>
+        <div class="filter-group" id="diff-filters">
+          <button class="filter-btn active" data-diff="0">すべて</button>
+          <button class="filter-btn" data-diff="1">★入門</button>
+          <button class="filter-btn" data-diff="2">★★初級</button>
+          <button class="filter-btn" data-diff="3">★★★中級</button>
+          <button class="filter-btn" data-diff="4">★★★★上級</button>
+          <button class="filter-btn" data-diff="5">★★★★★発展</button>
+        </div>
+        <label>タグ：</label>
+        <div class="filter-group" id="tag-filters">
+          <button class="filter-btn active" data-tag="">すべて</button>
+          
+        </div>
+      </div>
+      <div class="article-list" id="article-list">
+        <div class="empty-state"><p>記事を準備中です。しばらくお待ちください。</p></div>
       </div>
     </main>
     <aside class="sidebar">
@@ -58,17 +62,12 @@
       <strong>パソコンを買ったばかりの方でも大丈夫。</strong><br>
       AIツールの使い方・活用術を、専門用語なしでわかりやすく解説します。
     </p>
-    <a class="btn-note" href="https://note.com" target="_blank" rel="noopener">noteで記事を読む →</a>
+    <a class="btn-note" href="https://note.com/youth_waster" target="_blank" rel="noopener">noteで記事を読む →</a>
   </div>
   <div class="sidebar-box">
     <h3>タグ</h3>
-    <div class="sidebar-tags">
-      <a class="sidebar-tag" href="#">Claude</a>
-      <a class="sidebar-tag" href="#">AI入門</a>
-      <a class="sidebar-tag" href="#">ChatGPT</a>
-      <a class="sidebar-tag" href="#">副業</a>
-      <a class="sidebar-tag" href="#">使い方</a>
-      <a class="sidebar-tag" href="#">初心者</a>
+    <div class="sidebar-tags" id="sidebar-tag-filters">
+      <span class="sidebar-tag">Claude</span><span class="sidebar-tag">AI入門</span><span class="sidebar-tag">ChatGPT</span><span class="sidebar-tag">副業</span><span class="sidebar-tag">使い方</span><span class="sidebar-tag">初心者</span>
     </div>
   </div>
 </aside>
@@ -92,6 +91,42 @@ document.querySelectorAll('pre').forEach(function(pre) {
       setTimeout(function() { btn.textContent = 'コピー'; btn.classList.remove('copied'); }, 2000);
     });
   });
+});
+var activeDiff = 0, activeTag = '';
+function applyFilter() {
+  document.querySelectorAll('#article-list .article-card').forEach(function(card) {
+    var diff = parseInt(card.dataset.difficulty || '1');
+    var tags = card.dataset.tags || '';
+    var diffOk = activeDiff === 0 || diff === activeDiff;
+    var tagOk = activeTag === '' || tags.split(' ').indexOf(activeTag) >= 0;
+    card.classList.toggle('hidden', !(diffOk && tagOk));
+  });
+}
+function setTagFilter(tag) {
+  activeTag = tag;
+  document.querySelectorAll('#tag-filters .filter-btn, #sidebar-tag-filters .filter-btn').forEach(function(b) {
+    b.classList.toggle('active', b.dataset.tag === tag);
+  });
+  var allBtn = document.querySelector('#tag-filters .filter-btn[data-tag=""]');
+  if (allBtn) allBtn.classList.toggle('active', tag === '');
+  applyFilter();
+}
+document.querySelectorAll('#diff-filters .filter-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() {
+    activeDiff = parseInt(this.dataset.diff);
+    document.querySelectorAll('#diff-filters .filter-btn').forEach(function(b) { b.classList.remove('active'); });
+    this.classList.add('active');
+    applyFilter();
+  });
+});
+document.querySelectorAll('#tag-filters .filter-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() { setTagFilter(this.dataset.tag); });
+});
+document.querySelectorAll('#sidebar-tag-filters .filter-btn').forEach(function(btn) {
+  btn.addEventListener('click', function() { setTagFilter(this.dataset.tag); });
+});
+document.querySelectorAll('#article-list .tag').forEach(function(tag) {
+  tag.addEventListener('click', function() { setTagFilter(this.dataset.tag); });
 });
 </script>
 </body>
