@@ -203,7 +203,7 @@ def print_report(earnings: dict, strategy: dict, proposals_memory: dict):
 
 # ==================== メイン ====================
 
-def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
+def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, force_content: bool = False):
     print(f"\n{'='*52}")
     print(f"  自律型AIカンパニー 起動")
     print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -241,7 +241,7 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False):
     saas_weekdays    = sched.get("saas_weekdays", [0])          # 月曜のみ
     startup_notify   = sched.get("startup_notify", False)       # 起動通知は22時のみ
 
-    do_content  = (hour == content_hour) or weekly or dry_run
+    do_content  = (hour == content_hour) or weekly or dry_run or force_content
     do_improve  = (hour == improve_hour) or weekly or dry_run
     do_saas     = (weekday in saas_weekdays) or weekly or dry_run
 
@@ -393,5 +393,6 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", help="実際には投稿・送信せずにテスト実行")
     parser.add_argument("--report", action="store_true", help="収益レポートを表示")
     parser.add_argument("--weekly", action="store_true", help="週次実行（新モジュール生成含む）")
+    parser.add_argument("--force-content", action="store_true", help="時間帯に関係なく記事生成を強制実行")
     args = parser.parse_args()
-    run(dry_run=args.dry_run, report_only=args.report, weekly=args.weekly)
+    run(dry_run=args.dry_run, report_only=args.report, weekly=args.weekly, force_content=args.force_content)

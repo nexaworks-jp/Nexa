@@ -4,7 +4,14 @@ on:
   schedule:
     # 毎日 6:00, 12:00, 18:00, 22:00 JST (UTC+9) に実行
     - cron: '0 21,3,9,13 * * *'
-  workflow_dispatch:  # 手動実行も可能
+  workflow_dispatch:
+    inputs:
+      force_content:
+        description: '記事を強制生成する（時間帯に関係なく）'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
 
 jobs:
   run-ai-company:
@@ -66,7 +73,12 @@ jobs:
           EOF
 
       - name: Run AI Company
-        run: python main.py
+        run: |
+          if [ "${{ github.event.inputs.force_content }}" = "true" ]; then
+            python main.py --force-content
+          else
+            python main.py
+          fi
 
       - name: Commit updated memory and proposal files
         run: |
