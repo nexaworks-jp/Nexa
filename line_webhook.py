@@ -318,6 +318,22 @@ def handle_command(command: str, config: dict) -> str:
         msg += f"\n{text[:1000]}"
         return msg
 
+    elif cmd_lower in ("実行", "run", "今すぐ", "now"):
+        if GITHUB_TOKEN and GITHUB_REPO:
+            ok = trigger_github_actions("run.yml")
+            if ok:
+                return "▶️ 今すぐ実行を開始しました\n\n完了後にLINEで通知されます。"
+            return "⚠️ 実行トリガーに失敗しました\nGitHubトークンを確認してください。"
+        return "⚠️ GITHUB_TOKEN が設定されていません。"
+
+    elif cmd_lower in ("週次", "週次改善", "weekly"):
+        if GITHUB_TOKEN and GITHUB_REPO:
+            ok = trigger_github_actions("weekly.yml")
+            if ok:
+                return "🔧 週次改善を開始しました\n\n完了まで約30分かかります。"
+            return "⚠️ 実行トリガーに失敗しました\nGitHubトークンを確認してください。"
+        return "⚠️ GITHUB_TOKEN が設定されていません。"
+
     elif cmd_lower in ("改善", "improve", "i"):
         if GITHUB_TOKEN and GITHUB_REPO:
             url = f"https://api.github.com/repos/{GITHUB_REPO}/contents/proposals/improvements.md"
@@ -343,6 +359,8 @@ def handle_command(command: str, config: dict) -> str:
             "🤖 AIカンパニー コマンド一覧\n\n"
             "📊 レポート - 収益・状態を表示\n"
             "🛡️ リスク - リスク状態を表示\n"
+            "▶️ 実行 - 今すぐ実行\n"
+            "🔧 週次改善 - 改善を今すぐ実行\n"
             "📋 提案 - 最新の提案文を確認\n"
             "📈 改善 - 最新の改善分析を表示\n"
             "⏸️ 停止 - 全モジュールを停止\n"

@@ -1,0 +1,9 @@
+name = "nexa-line"
+main = "index.js"
+compatibility_date = "2024-01-01"
+
+# Secrets は wrangler secret put で設定（コードに書かない）:
+#   wrangler secret put LINE_CHANNEL_SECRET    --name nexa-line
+#   wrangler secret put LINE_CHANNEL_ACCESS_TOKEN --name nexa-line
+#   wrangler secret put GITHUB_TOKEN           --name nexa-line
+#   wrangler secret put GITHUB_REPO            --name nexa-line
