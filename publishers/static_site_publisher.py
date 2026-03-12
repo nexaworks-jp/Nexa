@@ -231,6 +231,35 @@ footer { text-align: center; padding: 40px 0; color: #b0b8c1; font-size: 12px; b
 .empty-state { text-align: center; padding: 80px 0; color: #b0b8c1; }
 .empty-state p { font-size: 15px; }
 
+/* 内部リンクカード */
+.related-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #f6fff0;
+  border: 1px solid #b8e6c8;
+  border-left: 4px solid var(--green);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin: 28px 0;
+  text-decoration: none;
+  transition: box-shadow .15s;
+}
+.related-card:hover { box-shadow: 0 4px 12px rgba(85,197,0,.15); }
+.related-card-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--green-dark);
+  white-space: nowrap;
+}
+.related-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+}
+.related-card-arrow { margin-left: auto; color: var(--green); font-size: 18px; flex-shrink: 0; }
+
 /* コードブロック */
 .code-wrapper { position: relative; margin-bottom: 20px; }
 .code-wrapper pre { margin-bottom: 0; }
@@ -329,13 +358,48 @@ def generate_article_page(article: dict) -> str:
     hashtags = article.get("hashtags", [])
     date_str = article.get("created_at", "")
     note_url = article.get("note_url", "https://note.com")
+    related_articles = article.get("related_articles", [])
 
     try:
         date_display = datetime.fromisoformat(date_str).strftime("%Y年%m月%d日")
     except Exception:
         date_display = ""
 
+    # リンクパターン読み込み
+    patterns_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory", "link_patterns.json")
+    link_patterns = {"prerequisite": ["📖 まずこちらをお読みください"], "related": ["👉 あわせて読みたい"], "next": ["🚀 次のステップはこちら"]}
+    if os.path.exists(patterns_path):
+        try:
+            with open(patterns_path, "r", encoding="utf-8") as f:
+                link_patterns = json.load(f)
+        except Exception:
+            pass
+
     free_html = markdown_to_html(content)
+
+    # 関連記事カードHTMLを生成
+    def make_related_card(rel: dict) -> str:
+        rel_id = rel.get("id", "")
+        rel_title = rel.get("title", "")
+        rel_type = rel.get("type", "related")
+        import random as _random
+        patterns_list = link_patterns.get(rel_type, ["👉 あわせて読みたい"])
+        label = _random.choice(patterns_list)
+        return f'''<a class="related-card" href="../articles/{rel_id}.html">
+  <span class="related-card-label">{label}</span>
+  <span class="related-card-title">{rel_title}</span>
+  <span class="related-card-arrow">›</span>
+</a>'''
+
+    # prerequisiteは記事冒頭に、related/nextは記事末尾に挿入
+    prereq_cards = "".join(make_related_card(r) for r in related_articles if r.get("type") == "prerequisite")
+    other_cards = "".join(make_related_card(r) for r in related_articles if r.get("type") in ("related", "next"))
+
+    # コンテンツの前後に挿入
+    if prereq_cards:
+        free_html = prereq_cards + free_html
+    if other_cards:
+        free_html = free_html + other_cards
     paid_wall_html = ""
     if price > 0:
         paragraphs = [p for p in content.split('\n\n') if p.strip()]

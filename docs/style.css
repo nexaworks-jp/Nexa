@@ -213,6 +213,35 @@ footer { text-align: center; padding: 40px 0; color: #b0b8c1; font-size: 12px; b
 .empty-state { text-align: center; padding: 80px 0; color: #b0b8c1; }
 .empty-state p { font-size: 15px; }
 
+/* 内部リンクカード */
+.related-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #f6fff0;
+  border: 1px solid #b8e6c8;
+  border-left: 4px solid var(--green);
+  border-radius: 8px;
+  padding: 14px 18px;
+  margin: 28px 0;
+  text-decoration: none;
+  transition: box-shadow .15s;
+}
+.related-card:hover { box-shadow: 0 4px 12px rgba(85,197,0,.15); }
+.related-card-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--green-dark);
+  white-space: nowrap;
+}
+.related-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.4;
+}
+.related-card-arrow { margin-left: auto; color: var(--green); font-size: 18px; flex-shrink: 0; }
+
 /* コードブロック */
 .code-wrapper { position: relative; margin-bottom: 20px; }
 .code-wrapper pre { margin-bottom: 0; }

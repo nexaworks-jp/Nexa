@@ -141,6 +141,56 @@ def update_source_weights(memory: dict, analysis: dict):
     print(f"[SelfImprover] ソース重み更新: {weights}")
 
 
+def optimize_link_patterns(client: anthropic.Anthropic, memory: dict):
+    """週次でリンク文言パターンを最適化する"""
+    import os
+    patterns_path = os.path.join(BASE_DIR, "memory", "link_patterns.json")
+    if not os.path.exists(patterns_path):
+        return
+
+    with open(patterns_path, "r", encoding="utf-8") as f:
+        current = json.load(f)
+
+    version = current.get("version", 1)
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=600,
+        messages=[{
+            "role": "user",
+            "content": f"""AI初心者向けサイトの内部リンクカードの文言を最適化してください。
+現在のバージョン: {version}
+
+現在の文言:
+{json.dumps(current, ensure_ascii=False, indent=2)}
+
+AI・IT初心者が思わずクリックしたくなる文言を各タイプ3つずつ提案してください。
+親しみやすく、押しつけがましくないトーンで。
+
+JSON形式で出力:
+{{
+  "prerequisite": ["文言1", "文言2", "文言3"],
+  "related": ["文言1", "文言2", "文言3"],
+  "next": ["文言1", "文言2", "文言3"]
+}}"""
+        }]
+    )
+
+    text = response.content[0].text
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        try:
+            new_patterns = json.loads(text[start:end])
+            new_patterns["version"] = version + 1
+            new_patterns["updated_at"] = datetime.now().isoformat()
+            with open(patterns_path, "w", encoding="utf-8") as f:
+                json.dump(new_patterns, f, ensure_ascii=False, indent=2)
+            print(f"[SelfImprover] リンク文言をv{version+1}に更新")
+        except Exception as e:
+            print(f"[SelfImprover] リンク文言更新エラー: {e}")
+
+
 def update_strategy(strategy: dict, analysis: dict) -> dict:
     """strategy.jsonをAIの分析結果で自動更新する"""
     updates = analysis.get("strategy_updates", {})
@@ -298,6 +348,7 @@ def run(config: dict, all_results: dict, memory: dict, weekly: bool = False) -> 
     """メイン実行関数"""
     print("[SelfImprover] 自己改善分析を開始...")
     try:
+        client = anthropic.Anthropic(api_key=config["anthropic_api_key"])
         analysis = analyze_performance(config, all_results, memory)
         if not analysis:
             return {}
@@ -307,6 +358,10 @@ def run(config: dict, all_results: dict, memory: dict, weekly: bool = False) -> 
 
         # ソース重みの自動更新
         update_source_weights(memory, analysis)
+
+        # リンク文言の最適化（週次のみ）
+        if weekly:
+            optimize_link_patterns(client, memory)
 
         new_module_path = ""
         if weekly:

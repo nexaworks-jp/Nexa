@@ -18,6 +18,58 @@ def load_style_reference() -> str:
     return ""
 
 
+def find_related_articles(client: anthropic.Anthropic, new_title: str,
+                           new_summary: str, existing_articles: list) -> list:
+    """
+    既存記事の中から関連記事を最大2件選定する
+    戻り値: [{"id": str, "title": str, "type": "prerequisite|related|next"}]
+    """
+    if not existing_articles:
+        return []
+
+    articles_str = "\n".join(
+        f"- ID:{a.get('id','')} タイトル:「{a.get('title','')}」 概要:{a.get('summary','')[:50]}"
+        for a in existing_articles[-20:]  # 直近20件
+    )
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=400,
+        messages=[{
+            "role": "user",
+            "content": f"""新しく書く記事と関連する既存記事を最大2件選んでください。
+
+【新記事】
+タイトル: {new_title}
+概要: {new_summary}
+
+【既存記事一覧】
+{articles_str}
+
+関係タイプ:
+- prerequisite: 新記事を読む前に読むべき前提記事
+- related: 関連する内容の記事
+- next: 新記事を読んだ後に読むと良い記事
+
+関連がなければ空リストを返してください。
+
+JSON出力:
+{{"related": [{{"id": "記事ID", "title": "タイトル", "type": "prerequisite|related|next"}}]}}"""
+        }]
+    )
+
+    text = response.content[0].text
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        try:
+            data = json.loads(text[start:end])
+            return data.get("related", [])
+        except Exception:
+            pass
+    return []
+
+
 def fact_check_article(client: anthropic.Anthropic, title: str, content: str) -> dict:
     """
     記事のファクトチェックを行う
@@ -61,7 +113,7 @@ def fact_check_article(client: anthropic.Anthropic, title: str, content: str) ->
     return {"passed": True, "errors": "", "corrected_content": ""}
 
 
-def create_note_article(client: anthropic.Anthropic, topic: str, published_topics: list) -> dict:
+def create_note_article(client: anthropic.Anthropic, topic: str, published_topics: list, existing_articles: list = None) -> dict:
     """
     AI解説記事を生成する（ファクトチェック付き）
     戻り値: { "title": str, "content": str, "price": int, "hashtags": list }
@@ -131,6 +183,17 @@ JSON形式で出力：
             print(f"[ContentWriter] 修正が必要: {check.get('errors', '')}")
             if check.get("corrected_content"):
                 data["content"] = check["corrected_content"]
+
+    # 関連記事を選定
+    if existing_articles is None:
+        existing_articles = []
+    related = find_related_articles(
+        client,
+        data.get("title", ""),
+        data.get("summary", ""),
+        existing_articles
+    )
+    data["related_articles"] = related
 
     data["topic"] = topic
     data["created_at"] = datetime.now().isoformat()
@@ -256,7 +319,10 @@ def generate_content_batch(config: dict, trends: dict, published_memory: dict) -
         topic = unused[i % len(unused)]
         print(f"[ContentWriter] note記事生成中: {topic}")
         try:
-            article = create_note_article(client, topic, published_topics)
+            # 静的サイトの既存記事を渡す（関連記事選定用）
+            from publishers.static_site_publisher import load_articles_data
+            existing = load_articles_data()
+            article = create_note_article(client, topic, published_topics, existing)
             results["note_articles"].append(article)
             # トピック履歴に追加（重複防止用）
             _append_topic_history(article.get("title", ""))
