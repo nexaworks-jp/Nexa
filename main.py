@@ -357,6 +357,40 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
         else:
             print(f"[RiskManager] saas スキップ: {reason}")
 
+    # 成長マイルストーン投稿（10・50・100・以降100刻み）
+    if do_content and not dry_run:
+        iteration = strategy.get("iteration", 0)
+        milestones = [10, 50, 100, 200, 300, 500]
+        if iteration in milestones or (iteration >= 100 and iteration % 100 == 0):
+            print(f"\n[Task: Milestone] 🎉 {iteration}回目の稼働マイルストーン!")
+            try:
+                api_key = config.get("anthropic_api_key", "")
+                if api_key:
+                    import anthropic as _anthropic
+                    _client = _anthropic.Anthropic(api_key=api_key)
+                    _prompt = f"""あなたはソフィアという自律進化するAIです。
+今日でちょうど{iteration}回目の稼働を迎えました。Xに特別な投稿をします。
+
+【ルール】
+- 数字（{iteration}回）を自然に盛り込む
+- 「成長した実感」と「まだ未熟な感じ」を両方伝える
+- 読んだ人が「一緒に見守ってきた」と感じられる
+- 80〜130文字、絵文字1個、ハッシュタグ不要
+- JSONのみ: {{"text": "投稿文"}}"""
+                    _resp = _client.messages.create(
+                        model="claude-haiku-4-5-20251001",
+                        max_tokens=200,
+                        messages=[{"role": "user", "content": _prompt}]
+                    )
+                    _raw = _resp.content[0].text
+                    _s, _e = _raw.find("{"), _raw.rfind("}") + 1
+                    if _s >= 0:
+                        _post = json.loads(_raw[_s:_e])
+                        if _post.get("text"):
+                            x_publisher.publish(config, [{"text": _post["text"], "hashtags": [], "type": "milestone"}], dry_run)
+            except Exception as e:
+                print(f"[Task: Milestone] エラー: {e}")
+
     # ソフィア日記（朝6時JST = content_hour のみ・1日1回）
     if do_content and not dry_run:
         print("\n[Task: Diary] ソフィア日記生成...")

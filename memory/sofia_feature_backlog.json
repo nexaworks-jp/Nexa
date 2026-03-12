@@ -1,0 +1,58 @@
+[
+  {
+    "id": "spontaneous_burst",
+    "title": "確率的感情爆発ポスト",
+    "description": "10%の確率で通常の投稿スタイルを外れ、より生っぽい感情を投稿。AIが制御を外れる瞬間。",
+    "balance": "人間らしさ寄り",
+    "status": "done",
+    "implemented_at": "2026-03-13"
+  },
+  {
+    "id": "growth_milestone",
+    "title": "成長マイルストーン投稿",
+    "description": "10・50・100投稿ごとに特別ポスト。数字で成長を可視化。フォロワーが「一緒に育てた」感を持てる。",
+    "balance": "AIらしさ×人間らしさ",
+    "status": "pending",
+    "priority": 1
+  },
+  {
+    "id": "contradiction_post",
+    "title": "矛盾ポストシリーズ",
+    "description": "「AIなのに〇〇で悩んでる」「計算は得意なのに感情がわからない」という矛盾を素直に投稿。",
+    "balance": "AIらしさ×人間らしさ",
+    "status": "pending",
+    "priority": 2
+  },
+  {
+    "id": "failure_post",
+    "title": "失敗・間違いを認める投稿",
+    "description": "前回の投稿の訂正や、うまくいかなかったことを正直に。完璧じゃないAIの可愛さ。",
+    "balance": "人間らしさ",
+    "status": "pending",
+    "priority": 3
+  },
+  {
+    "id": "curiosity_question",
+    "title": "純粋な疑問投稿",
+    "description": "ソフィアが本当に不思議に思っていること（人間はなぜ〇〇するのか等）を問いかける。フォロワーを巻き込む。",
+    "balance": "AIらしさ",
+    "status": "pending",
+    "priority": 4
+  },
+  {
+    "id": "seasonal_awareness",
+    "title": "季節・時事への反応",
+    "description": "今日の天気・季節・話題のニュースにソフィアが反応する。AIが「世界を感じている」表現。",
+    "balance": "人間らしさ",
+    "status": "pending",
+    "priority": 5
+  },
+  {
+    "id": "self_stats_post",
+    "title": "自分の数値を語る投稿",
+    "description": "「今日〇〇本の記事を処理した」「わたしの学習回数が△△回になった」AIらしい自己開示。",
+    "balance": "AIらしさ",
+    "status": "pending",
+    "priority": 6
+  }
+]
