@@ -1,13 +1,13 @@
 {
-  "current_focus": "crowdworks, content",
-  "reasoning": "収益ゼロが4iteration続いている。crowdworksで即金化を優先し、同時にcontentで認知拡大。トレンドに合致した案件獲得を重視。",
+  "current_focus": "crowdworks",
+  "reasoning": "ルールベース判断",
   "week_goals": {
     "note_articles": 14,
     "x_posts": 56
   },
   "performance_notes": [],
-  "last_updated": "2026-03-11T22:03:51.347758",
-  "iteration": 5,
+  "last_updated": "2026-03-12T00:44:25.504420",
+  "iteration": 6,
   "primary_niche": "進化心理学",
   "content_themes": [
     "サピエンスの承認欲求と現代SNS",
