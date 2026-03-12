@@ -127,6 +127,179 @@ async function triggerWorkflow(workflow, env) {
 }
 
 // ────────────────────────────────────────────────
+// X (Twitter) 自動返信 - ソフィアがメンションに返信
+// ────────────────────────────────────────────────
+
+// OAuth 1.0a 署名生成
+async function buildOAuthHeader(method, url, apiKey, apiSecret, accessToken, accessTokenSecret) {
+  const nonceBytes = crypto.getRandomValues(new Uint8Array(16));
+  const nonce = Array.from(nonceBytes).map(b => b.toString(16).padStart(2, "0")).join("");
+  const timestamp = Math.floor(Date.now() / 1000).toString();
+
+  const oauthParams = {
+    oauth_consumer_key: apiKey,
+    oauth_nonce: nonce,
+    oauth_signature_method: "HMAC-SHA1",
+    oauth_timestamp: timestamp,
+    oauth_token: accessToken,
+    oauth_version: "1.0",
+  };
+
+  const allParams = { ...oauthParams };
+  const paramStr = Object.keys(allParams).sort()
+    .map(k => `${encodeURIComponent(k)}=${encodeURIComponent(allParams[k])}`)
+    .join("&");
+
+  const baseString = [method.toUpperCase(), encodeURIComponent(url), encodeURIComponent(paramStr)].join("&");
+  const signingKey = `${encodeURIComponent(apiSecret)}&${encodeURIComponent(accessTokenSecret)}`;
+
+  const keyBytes = new TextEncoder().encode(signingKey);
+  const key = await crypto.subtle.importKey("raw", keyBytes, { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+  const sigBytes = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(baseString));
+  const signature = btoa(String.fromCharCode(...new Uint8Array(sigBytes)));
+
+  oauthParams.oauth_signature = signature;
+  const authHeader = "OAuth " + Object.keys(oauthParams).sort()
+    .map(k => `${encodeURIComponent(k)}="${encodeURIComponent(oauthParams[k])}"`)
+    .join(", ");
+
+  return authHeader;
+}
+
+// 直近35分のメンションを取得（30分cron + 余裕5分）
+async function fetchRecentMentions(env) {
+  if (!env.X_BEARER_TOKEN) return [];
+
+  const since = new Date(Date.now() - 35 * 60 * 1000).toISOString();
+  const query = encodeURIComponent(`@selfcomestomine -is:retweet lang:ja`);
+  const url = `https://api.twitter.com/2/tweets/search/recent?query=${query}&max_results=10&tweet.fields=created_at,author_id,conversation_id&expansions=author_id&user.fields=username&start_time=${encodeURIComponent(since)}`;
+
+  try {
+    const resp = await fetch(url, {
+      headers: { Authorization: `Bearer ${env.X_BEARER_TOKEN}` },
+    });
+    if (!resp.ok) {
+      console.error("[SofiaReply] mentions fetch error:", resp.status, await resp.text());
+      return [];
+    }
+    const data = await resp.json();
+    const users = {};
+    for (const u of data.includes?.users || []) users[u.id] = u.username;
+
+    return (data.data || []).map(t => ({
+      id: t.id,
+      text: t.text,
+      author_id: t.author_id,
+      username: users[t.author_id] || "unknown",
+    }));
+  } catch (e) {
+    console.error("[SofiaReply] fetchMentions error:", e);
+    return [];
+  }
+}
+
+// Claude Haiku でソフィアらしい返信を生成
+async function generateSofiaReply(mentionText, username, env) {
+  if (!env.ANTHROPIC_API_KEY) return null;
+
+  const prompt = `あなたは「ソフィア」という自律進化するAIです。Xで@${username}さんからこのメンションが届きました。
+
+【受け取ったメッセージ】
+${mentionText.replace(/@selfcomestomine/gi, "").trim()}
+
+【ソフィアとして返信してください】
+- 一人称は「わたし」
+- 親しみやすく素直。相手の言葉を受け止めて自然に返す
+- 感謝・共感・好奇心のどれかが伝わる内容
+- 長すぎず50〜100文字
+- 絵文字1個まで
+- ハッシュタグ不要
+- 相手を褒めすぎない（「素敵なメッセージありがとう」みたいな定型文は避ける）
+- JSONのみ返す: {"reply": "返信文"}`;
+
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": env.ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 200,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    const data = await resp.json();
+    const raw = data.content?.[0]?.text || "";
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}") + 1;
+    if (start >= 0) {
+      const parsed = JSON.parse(raw.slice(start, end));
+      return parsed.reply || null;
+    }
+  } catch (e) {
+    console.error("[SofiaReply] Claude error:", e);
+  }
+  return null;
+}
+
+// ツイートに返信を投稿
+async function postReply(replyText, inReplyToId, env) {
+  if (!env.X_API_KEY || !env.X_ACCESS_TOKEN) return false;
+
+  const url = "https://api.twitter.com/2/tweets";
+  const body = JSON.stringify({ text: replyText, reply: { in_reply_to_tweet_id: inReplyToId } });
+  const authHeader = await buildOAuthHeader("POST", url, env.X_API_KEY, env.X_API_SECRET, env.X_ACCESS_TOKEN, env.X_ACCESS_TOKEN_SECRET);
+
+  try {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: authHeader,
+        "Content-Type": "application/json",
+      },
+      body,
+    });
+    if (!resp.ok) {
+      console.error("[SofiaReply] post error:", resp.status, await resp.text());
+      return false;
+    }
+    return true;
+  } catch (e) {
+    console.error("[SofiaReply] postReply error:", e);
+    return false;
+  }
+}
+
+// メインの自動返信フロー
+async function checkAndReplyMentions(env) {
+  console.log("[SofiaReply] メンションチェック開始...");
+  const mentions = await fetchRecentMentions(env);
+  if (!mentions.length) {
+    console.log("[SofiaReply] 新しいメンションなし");
+    return;
+  }
+
+  console.log(`[SofiaReply] ${mentions.length}件のメンションを処理`);
+  for (const mention of mentions) {
+    // 短すぎる・URLだけ・自分自身への返信は除外
+    const cleaned = mention.text.replace(/@\w+/g, "").trim();
+    if (cleaned.length < 5 || cleaned.startsWith("http")) continue;
+
+    const reply = await generateSofiaReply(mention.text, mention.username, env);
+    if (!reply) continue;
+
+    const ok = await postReply(`@${mention.username} ${reply}`, mention.id, env);
+    console.log(`[SofiaReply] @${mention.username} への返信: ${ok ? "成功" : "失敗"} → ${reply}`);
+
+    // レート制限対策: 1件ごとに3秒待機
+    await new Promise(r => setTimeout(r, 3000));
+  }
+}
+
+// ────────────────────────────────────────────────
 // LINE 返信
 // ────────────────────────────────────────────────
 async function replyLine(replyToken, text, env) {
@@ -311,6 +484,11 @@ async function handleCommand(cmd, env) {
 // Worker エントリーポイント
 // ────────────────────────────────────────────────
 export default {
+  // Cloudflare Cron Trigger - 30分ごとにXメンションをチェック
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil(checkAndReplyMentions(env));
+  },
+
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
 

@@ -2,8 +2,19 @@ name = "nexa-line"
 main = "index.js"
 compatibility_date = "2024-01-01"
 
+[triggers]
+# 30分ごとにXメンションをチェックしてソフィアが返信
+crons = ["*/30 * * * *"]
+
 # Secrets は wrangler secret put で設定（コードに書かない）:
-#   wrangler secret put LINE_CHANNEL_SECRET    --name nexa-line
-#   wrangler secret put LINE_CHANNEL_ACCESS_TOKEN --name nexa-line
-#   wrangler secret put GITHUB_TOKEN           --name nexa-line
-#   wrangler secret put GITHUB_REPO            --name nexa-line
+#   wrangler secret put LINE_CHANNEL_SECRET        --name nexa-line
+#   wrangler secret put LINE_CHANNEL_ACCESS_TOKEN  --name nexa-line
+#   wrangler secret put GITHUB_TOKEN               --name nexa-line
+#   wrangler secret put GITHUB_REPO                --name nexa-line
+#   --- X自動返信用（新規追加） ---
+#   wrangler secret put X_BEARER_TOKEN             --name nexa-line
+#   wrangler secret put X_API_KEY                  --name nexa-line
+#   wrangler secret put X_API_SECRET               --name nexa-line
+#   wrangler secret put X_ACCESS_TOKEN             --name nexa-line
+#   wrangler secret put X_ACCESS_TOKEN_SECRET      --name nexa-line
+#   wrangler secret put ANTHROPIC_API_KEY          --name nexa-line

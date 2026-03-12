@@ -73,6 +73,12 @@ jobs:
           }
           EOF
 
+      - name: Random posting delay (human-like timing)
+        run: |
+          DELAY=$((RANDOM % 2700))
+          echo "ランダム遅延: ${DELAY}秒 ($(( DELAY / 60 ))分) 待機中..."
+          sleep $DELAY
+
       - name: Run social learning (Sofia - 6JST only)
         run: |
           HOUR=$(date -u +%H)
