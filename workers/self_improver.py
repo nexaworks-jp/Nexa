@@ -54,6 +54,17 @@ def analyze_performance(config: dict, all_results: dict, memory: dict) -> dict:
 - PVが多い記事のタグ・難易度 → コンテンツ戦略に反映する
 - 流入元がSNSなら → X投稿との連携を強化
 - 流入元が検索なら → SEOキーワードをさらに最適化
+
+【X投稿戦略の考え方】
+- 基本方針: 最初は有益な情報発信だけを行い、フォロワーの信頼を獲得することを最優先にする
+- 導線投稿（noteやブログのリンク）は「いやらしい」と思われないタイミングまで一切やらない
+- funnel_ratio: 0.0〜1.0（note/ブログへの導線ポストの割合）
+  - デフォルト: 0.0（完全に情報発信のみ）
+  - 導線開始を検討する条件: 情報発信で一定の反応が出てきた・フォロワーが増加傾向・ブログのPVが安定
+  - 導線を始める場合も最初は0.1〜0.2程度にとどめ、不自然にならないよう徐々に上げる
+  - 導線を始めないと判断してもよい（情報発信だけで十分な認知が取れているなら）
+- dominant_style: "insight"(発見系) / "tips"(Tips系) / "comparison"(比較系) / "question"(共感系)
+- 現フェーズ（アクセス・フォロワーが少ない初期）はfunnel_ratio=0.0を維持することを推奨
 """
 
     response = client.messages.create(
@@ -71,11 +82,19 @@ def analyze_performance(config: dict, all_results: dict, memory: dict) -> dict:
 【API実行スケジュール最適化の考え方】
 - 収益が出ているチャネルは実行頻度を上げる（saas_weekdaysを増やすなど）
 - 成果が出ていないチャネルは頻度を下げてAPI節約
-- content生成は1日1回が基本。noteが月1万円超えたら2回に増やす（content_hour_utcを2つにはできないので別途検討）
+- content生成は1日1回が基本。noteが月1万円超えたら2回に増やす
 - saasは初期は週1回[0]。受注が出たら週2回[0,3]に増やす
 - 収益ゼロが2週間続くなら全体的に頻度を下げる
 - improve_hour_utcは基本13(22JST)のまま変えない
 - startup_notifyはtrueにするとAPI起動通知が全実行で届く（デフォルトfalse推奨）
+
+【note価格戦略の考え方】
+- 基本方針: 集客フェーズ（初期）は無料で読者を獲得し、安定後に有料化
+- note_article_price: 0=無料, 300=有料(¥300)
+- 無料継続の条件: 30日PVが低い・フォロワーが少ない・まだ認知獲得中
+- 有料切替の条件: 30日PV300超 かつ 安定した流入 かつ リピーターがいる兆候
+- 部分有料も可: note_paid_ratio（0.0〜1.0）で有料記事の割合を指定（例: 0.3=3割有料）
+- 価格は¥300固定（変更不要）
 
 以下のJSON形式で出力してください：
 {{
@@ -92,6 +111,16 @@ def analyze_performance(config: dict, all_results: dict, memory: dict) -> dict:
     "saas_weekdays": [0],
     "startup_notify": false,
     "schedule_reason": "スケジュール変更の理由（50文字以内）"
+  }},
+  "note_pricing": {{
+    "note_article_price": 0,
+    "note_paid_ratio": 0.0,
+    "pricing_reason": "現在の価格戦略の理由（50文字以内）"
+  }},
+  "x_strategy": {{
+    "funnel_ratio": 0.0,
+    "dominant_style": "insight",
+    "strategy_reason": "X投稿戦略の理由（50文字以内）"
   }},
   "improvements": [
     {{
@@ -321,6 +350,21 @@ def update_strategy(strategy: dict, analysis: dict) -> dict:
         reason = new_sched.get("schedule_reason", "")
         if reason:
             print(f"[SelfImprover] スケジュール更新: {reason}")
+
+    # note価格戦略を保存
+    pricing = analysis.get("note_pricing", {})
+    if pricing:
+        strategy["note_pricing"] = pricing
+        reason = pricing.get("pricing_reason", "")
+        price = pricing.get("note_article_price", 0)
+        ratio = pricing.get("note_paid_ratio", 0.0)
+        print(f"[SelfImprover] note価格戦略: ¥{price} / 有料率{int(ratio*100)}% - {reason}")
+
+    # X投稿戦略を保存
+    x_strat = analysis.get("x_strategy", {})
+    if x_strat:
+        strategy["x_strategy"] = x_strat
+        print(f"[SelfImprover] X戦略: 導線{int(x_strat.get('funnel_ratio',0.3)*100)}% / {x_strat.get('strategy_reason','')}")
 
     return strategy
 

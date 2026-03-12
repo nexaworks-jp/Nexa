@@ -103,15 +103,26 @@ def run_content_task(config, trends, published, dry_run):
     # 3. note.com投稿（自動 or 下書き保存）
     note_results = note_publisher.publish(config, articles, dry_run)
 
-    # 4. X投稿
-    x_results = x_publisher.publish(
-        config, generated.get("x_posts", []), dry_run
-    )
+    # note自動投稿が成功したらXの導線ポストに実URLを差し込む
+    x_posts = generated.get("x_posts", [])
+    for note_result in note_results:
+        note_url = note_result.get("url", "")
+        if note_url and not note_result.get("is_draft"):
+            for post in x_posts:
+                if post.get("funnel_type") == "note" and "[noteリンク]" in post.get("text", ""):
+                    post["text"] = post["text"].replace("[noteリンク]", note_url)
+                    break
 
-    # 下書き保存完了をLINEに通知
+    # 4. X投稿
+    x_results = x_publisher.publish(config, x_posts, dry_run)
+
+    # 投稿結果をLINEに通知
     if not dry_run:
+        posted = [r for r in note_results if r.get("success") and not r.get("is_draft")]
         drafts = [r for r in note_results if r.get("is_draft") and r.get("success")]
-        if drafts:
+        if posted:
+            line_notifier.notify_proposals_ready(config, posted)
+        elif drafts:
             line_notifier.notify_draft_ready(config, drafts)
 
     # トピック使用履歴を更新

@@ -195,6 +195,26 @@ def create_note_article(client: anthropic.Anthropic, topic: str, published_topic
         examples = "\n".join(f"  - {t.replace('{topic}', topic)}" for t in seo_templates[:3])
         seo_hint = f"\n【SEO最適化タイトル例（参考）】\n{examples}\n"
 
+    # 自己改善エンジンが決定した価格戦略を読み取る
+    price = 0
+    try:
+        import os as _os
+        strategy_path = _os.path.join(_os.path.dirname(_os.path.dirname(__file__)), "memory", "strategy.json")
+        if _os.path.exists(strategy_path):
+            with open(strategy_path, "r", encoding="utf-8") as _f:
+                _strategy = json.load(_f)
+            pricing = _strategy.get("note_pricing", {})
+            base_price = pricing.get("note_article_price", 0)
+            paid_ratio = pricing.get("note_paid_ratio", 0.0)
+            # paid_ratioに基づいて確率的に有料/無料を決定
+            if base_price > 0 and paid_ratio > 0:
+                import random as _random
+                price = base_price if _random.random() < paid_ratio else 0
+            else:
+                price = base_price
+    except Exception:
+        pass  # 読み取り失敗 → 無料のまま
+
     # トピックが実践系（Claude Code / Skills / CLAUDE.md 等）か判定
     practical_keywords = [
         "claude code", "skill", "skills", "skill.md", "claude.md", "mcp", "サブエージェント",
@@ -265,7 +285,7 @@ JSON形式で出力：
 {{
   "title": "記事タイトル",
   "content": "記事本文（マークダウン）",
-  "price": 0,
+  "price": {price},
   "hashtags": ["AI", "Claude", "関連タグ"],
   "summary": "記事の概要（100文字）",
   "difficulty": 1
@@ -337,15 +357,13 @@ difficultyの基準（1〜5）:
 
 
 def create_x_post(client: anthropic.Anthropic, topic: str, style: str = "insight",
-                   note_article: dict = None) -> dict:
+                   note_article: dict = None, site_article: dict = None) -> dict:
     """
     X(Twitter)用の投稿を生成する
-    style: "insight" | "thread_start" | "question" | "note_funnel"
-    note_funnel: noteへの導線ポスト（記事公開時にURLを差し込む）
+    style: "insight" | "tips" | "comparison" | "question" | "note_funnel" | "site_funnel"
     """
     if style == "note_funnel" and note_article:
-        # note記事への導線ポスト
-        prompt = f"""Claude初心者向けnote記事への導線Xポストを書いてください。
+        prompt = f"""AI・Claude関連のnote記事への導線Xポストを書いてください。
 
 記事タイトル: {note_article.get('title', '')}
 記事サマリー: {note_article.get('summary', '')}
@@ -353,40 +371,70 @@ def create_x_post(client: anthropic.Anthropic, topic: str, style: str = "insight
 
 条件：
 - 120文字以内（URLスペース確保のため）
-- 「これ知らないと損」「こんなことができる」という発見・驚きを伝える
+- 記事の一番「おっ」と思わせるポイントを1行で伝える
+- 「続きはnoteで」「詳しくはこちら↓」など自然な導線フレーズ
 - 絵文字は1〜2個
-- 「詳しくはnoteで」「↓で解説しています」など導線フレーズを入れる
 - ハッシュタグは本文に含めない
-- URLは「[noteリンク]」というプレースホルダーにする（オーナーが差し替える）
+- URLは「[noteリンク]」というプレースホルダー
 
 JSON形式で出力：
 {{
-  "text": "ツイート本文（末尾に改行＋[noteリンク]を含む）",
+  "text": "ツイート本文（末尾に改行＋[noteリンク]）",
   "hashtags": ["Claude", "AI活用"],
-  "is_note_funnel": true
+  "is_funnel": true,
+  "funnel_type": "note"
 }}"""
+
+    elif style == "site_funnel" and site_article:
+        prompt = f"""AI解説ブログ記事への導線Xポストを書いてください。
+
+記事タイトル: {site_article.get('title', '')}
+記事サマリー: {site_article.get('summary', '')}
+記事URL: {site_article.get('url', '[ブログリンク]')}
+
+条件：
+- 120文字以内
+- 「無料で読める」「ブログで詳しく解説」など
+- 絵文字は1〜2個
+- ハッシュタグは本文に含めない
+
+JSON形式で出力：
+{{
+  "text": "ツイート本文（URLを含む）",
+  "hashtags": ["Claude", "AI"],
+  "is_funnel": true,
+  "funnel_type": "site"
+}}"""
+
     else:
         style_prompts = {
-            "insight": "「実はClaudeで〇〇できる」という驚きの発見系",
-            "thread_start": "「〇〇分でできる」「知らないと損なAI活用」ヒント系",
-            "question": "「AIって難しそう？全然そんなことない」という安心・共感系",
+            "insight": """「実はClaudeで〇〇できる」「知らなかった人は損してた」という発見・驚き系。
+具体的な使い方や活用例を1つ挙げる。読んだ人がすぐ試せる内容にする。""",
+            "tips": """「Claudeをもっとうまく使う方法」「プロンプトのコツ」「時短ワザ」系。
+「〇〇するだけで△△になる」という具体的なTips形式。""",
+            "comparison": """「ChatGPTとClaudeを比べてみた」「〇〇ならどっちが向いてる？」という比較・使い分け系。
+読者が「自分はどっち使えばいいか」わかる内容にする。""",
+            "question": """「AIって難しそう？全然そんなことない」「こんなことで悩んでませんか？」共感・安心系。
+初心者の不安や疑問に答え、「自分でもできそう」という感覚を与える。""",
         }
-        prompt = f"""Claude・AIを初心者に届けるXポストを書いてください。
+        prompt = f"""AI・Claude関連の有益な情報をXで発信してください。
 
 トピック: {topic}
 スタイル: {style_prompts.get(style, style_prompts['insight'])}
 
 条件：
 - 140文字以内（日本語）
-- 絵文字は1〜2個（親しみやすさのため）
-- 「難しそう」という先入観を払拭する言葉を使う
+- 絵文字は1〜2個
+- 抽象的な話より「具体的に何ができるか」を優先
 - ハッシュタグは本文に含めない
+- 単なる宣伝にならず、それ自体で価値ある情報にする
 
 JSON形式で出力：
 {{
   "text": "ツイート本文",
   "hashtags": ["Claude", "AI活用"],
-  "is_note_funnel": false
+  "is_funnel": false,
+  "funnel_type": null
 }}"""
 
     response = client.messages.create(
@@ -465,33 +513,55 @@ def generate_content_batch(config: dict, trends: dict, published_memory: dict) -
         except Exception as e:
             print(f"[ContentWriter] 記事生成エラー: {e}")
 
-    # Xポストを複数生成
-    # note記事ごとに導線ポスト（note_funnel）を1本、残りは独立インサイト
+    # Xポスト生成戦略を自己改善から読み取る
     x_count = config.get("settings", {}).get("x_post_per_day", 8)
-    standalone_styles = ["insight", "thread_start", "question"]
+    x_strategy = _load_x_strategy()
+    funnel_ratio = x_strategy.get("funnel_ratio", 0.0)  # デフォルト0%（自己改善が判断するまで純粋な情報発信）
+    standalone_styles = ["insight", "tips", "comparison", "question"]
 
-    # note記事への導線ポストを先に生成し、記事本体にも紐づける
+    # note記事ごとに導線ポストを生成（記事本体にも紐づける）
     for article in results["note_articles"]:
-        topic = article.get("topic", unused[0] if unused else "進化心理学")
+        topic = article.get("topic", unused[0] if unused else "AI活用")
         print(f"[ContentWriter] note導線ポスト生成中: {article.get('title', '')}")
         try:
             post = create_x_post(client, topic, style="note_funnel", note_article=article)
             results["x_posts"].append(post)
-            # 下書きファイルに一緒に書き出せるよう記事に紐づける
             article["x_funnel_post"] = post.get("text", "")
         except Exception as e:
             print(f"[ContentWriter] note導線ポスト生成エラー: {e}")
 
-    # 残りをスタンドアロンインサイトで埋める
+    # 残りの枠を情報発信ポストで埋める（funnel_ratioで導線比率を調整）
     remaining = x_count - len(results["x_posts"])
     for i in range(max(0, remaining)):
-        topic = unused[i % len(unused)]
-        style = standalone_styles[i % len(standalone_styles)]
+        topic = unused[i % max(len(unused), 1)]
+        # funnel_ratioに基づいてsite_funnelか情報発信かを選択
+        import random
+        if random.random() < funnel_ratio and results["note_articles"]:
+            # サイト記事への導線（静的ブログへの流入）
+            site_art = results["note_articles"][i % len(results["note_articles"])]
+            style = "site_funnel"
+        else:
+            style = standalone_styles[i % len(standalone_styles)]
+            site_art = None
         print(f"[ContentWriter] Xポスト生成中: {topic} ({style})")
         try:
-            post = create_x_post(client, topic, style)
+            post = create_x_post(client, topic, style=style, site_article=site_art)
             results["x_posts"].append(post)
         except Exception as e:
             print(f"[ContentWriter] Xポスト生成エラー: {e}")
 
     return results
+
+
+def _load_x_strategy() -> dict:
+    """memory/strategy.json からX投稿戦略を読み取る"""
+    try:
+        import os
+        path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                            "memory", "strategy.json")
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f).get("x_strategy", {})
+    except Exception:
+        pass
+    return {}
