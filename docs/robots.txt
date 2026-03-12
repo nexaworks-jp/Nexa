@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://nexa.nexaworks-jp.workers.dev/sitemap.xml
