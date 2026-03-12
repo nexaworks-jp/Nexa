@@ -75,8 +75,8 @@ jobs:
           git add drafts/ 2>/dev/null || true
           git add docs/ 2>/dev/null || true
           git diff --staged --quiet || git commit -m "🤖 AI Company run $(date +'%Y-%m-%d %H:%M')"
-          git pull --rebase origin main || true
-          git push
+          git pull --rebase -X theirs origin main || true
+          git push origin HEAD:main
 
       - name: Deploy to Cloudflare Workers
         run: npx wrangler deploy
