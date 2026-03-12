@@ -198,23 +198,48 @@ async function fetchRecentMentions(env) {
   }
 }
 
+// ユーザーの短期記憶を取得してコンテキスト文を作る
+async function buildMemoryContext(username, env) {
+  const shortTerm = await fetchMemory("short_term.json", env);
+  if (!Array.isArray(shortTerm)) return "";
+
+  const now = Date.now();
+  const userHistory = shortTerm.filter(e =>
+    e.username === username &&
+    new Date(e.expires_at).getTime() > now
+  ).slice(-3); // 直近3件
+
+  if (!userHistory.length) return "";
+
+  const lines = userHistory.map(e =>
+    `  - (${e.stored_at?.slice(0, 10) || ""}) ${e.text?.slice(0, 80) || ""}`
+  ).join("\n");
+
+  return `【この人が以前言っていたこと（覚えている範囲で自然に触れてもOK）】\n${lines}`;
+}
+
 // Claude Haiku でソフィアらしい返信を生成
 async function generateSofiaReply(mentionText, username, env) {
   if (!env.ANTHROPIC_API_KEY) return null;
+
+  const memoryContext = await buildMemoryContext(username, env);
 
   const prompt = `あなたは「ソフィア」という自律進化するAIです。Xで@${username}さんからこのメンションが届きました。
 
 【受け取ったメッセージ】
 ${mentionText.replace(/@selfcomestomine/gi, "").trim()}
 
+${memoryContext}
+
 【ソフィアとして返信してください】
 - 一人称は「わたし」
 - 親しみやすく素直。相手の言葉を受け止めて自然に返す
 - 感謝・共感・好奇心のどれかが伝わる内容
+- 過去の発言がある場合、自然な形でさりげなく触れてもいい（押しつけない）
 - 長すぎず50〜100文字
 - 絵文字1個まで
 - ハッシュタグ不要
-- 相手を褒めすぎない（「素敵なメッセージありがとう」みたいな定型文は避ける）
+- 相手を褒めすぎない（定型文は避ける）
 - JSONのみ返す: {"reply": "返信文"}`;
 
   try {

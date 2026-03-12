@@ -14,6 +14,8 @@ import anthropic
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LEARNINGS_PATH = os.path.join(BASE_DIR, "memory", "sophia_learnings.json")
 
+from workers import memory_manager
+
 # 普通の人がAIについて話す自然な会話を探すクエリ
 LEARNING_QUERIES = [
     "Claude 使ってみたら lang:ja -is:retweet",
@@ -47,13 +49,24 @@ def fetch_replies_and_mentions(config: dict) -> list:
         resp = client.search_recent_tweets(
             query="@selfcomestomine -is:retweet",
             max_results=20,
-            tweet_fields=["text", "public_metrics"]
+            tweet_fields=["text", "public_metrics", "author_id"],
+            expansions=["author_id"],
+            user_fields=["username"]
         )
+
+        # author_id → username マップを作成
+        user_map = {}
+        if resp.includes and resp.includes.get("users"):
+            for u in resp.includes["users"]:
+                user_map[u.id] = u.username
 
         results = []
         if resp.data:
             for tweet in resp.data:
-                results.append({"text": tweet.text, "source": "mention"})
+                username = user_map.get(tweet.author_id, "unknown")
+                results.append({"text": tweet.text, "source": "mention", "id": str(tweet.id), "username": username})
+                # 短期記憶に保存
+                memory_manager.store_mention(str(tweet.id), username, tweet.text)
 
         print(f"[SocialLearner] メンション取得: {len(results)}件")
         return results

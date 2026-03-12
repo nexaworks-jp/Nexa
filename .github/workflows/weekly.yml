@@ -57,6 +57,15 @@ jobs:
           }
           EOF
 
+      - name: Memory maintenance (decay + promote + cleanup)
+        run: |
+          python3 - << 'EOF'
+import sys
+sys.path.insert(0, ".")
+from workers import memory_manager
+memory_manager.run_weekly_maintenance()
+EOF
+
       - name: Run weekly improvement (with new module generation)
         run: python main.py --weekly
 
