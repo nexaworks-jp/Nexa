@@ -18,66 +18,119 @@ def load_style_reference() -> str:
     return ""
 
 
-def create_note_article(client: anthropic.Anthropic, topic: str, published_topics: list) -> dict:
+def fact_check_article(client: anthropic.Anthropic, title: str, content: str) -> dict:
     """
-    note.com用の有料記事を生成する
-    戻り値: { "title": str, "content": str, "price": int, "hashtags": list }
+    記事のファクトチェックを行う
+    戻り値: {"passed": bool, "errors": str, "corrected_content": str}
     """
-    avoid = ", ".join(published_topics[-20:]) if published_topics else "なし"
-    style_guide = load_style_reference()
-
-    style_section = ""
-    if style_guide:
-        style_section = f"""
-【参考スタイルガイド（エボサイ）】
-{style_guide[:2000]}
-
-"""
-
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=3000,
+        max_tokens=2000,
         messages=[{
             "role": "user",
-            "content": f"""あなたは「昨日パソコンを買った人でもわかるAI入門」をテーマにしたnoteクリエイターです。
-以下のスタイルガイドを参考に、初心者に売れる質の高いnote記事を書いてください。
-{style_section}
-トピック: {topic}
-避けるべき最近のトピック: {avoid}
+            "content": f"""以下の記事のファクトチェックをしてください。
 
-以下のJSON形式で出力してください：
-{{
-  "title": "記事タイトル（30文字以内、「〜でもわかる」「〜分でできる」「Claudeで〜する方法」など初心者向けのわかりやすいタイトル）",
-  "content": "記事本文（マークダウン形式、1500〜2500文字、IT初心者がClaudeを使いこなすための解説）",
-  "price": 300,
-  "hashtags": ["Claude", "AI初心者", "ハッシュタグ3"],
-  "summary": "記事の無料公開部分の要約（100文字）"
-}}
+記事タイトル: {title}
 
-記事は必ず：
-- 「こんなことで困っていませんか？」という共感から入る
-- 専門用語を使わない（どうしても必要なら平易な言葉で補足する）
-- 手順は番号付きリストで、スクショがあることを前提に書く
-- 親切・丁寧・やさしいトーン（友人に教えるように）
-- 有料部分に応用テクニック・時短ワザを入れる"""
+記事本文:
+{content}
+
+チェック観点：
+1. AIツールの機能・仕様に関する明らかな誤り
+2. 存在しないURLやサービス名
+3. 数字・価格・日付の明らかな誤り
+4. 「〜は絶対に〜」など断言しすぎている誤情報
+
+出力形式：
+- 問題がなければ: {{"passed": true, "errors": "", "corrected_content": ""}}
+- 問題があれば: {{"passed": false, "errors": "エラーの説明", "corrected_content": "修正済みの本文全体"}}
+
+注意：AIの知識カットオフ以降の最新情報については「最新情報は公式サイトをご確認ください」という形で対応してください。
+確実に間違いと言える場合のみ修正してください。"""
         }]
     )
 
     text = response.content[0].text
-    # JSONを抽出
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        try:
+            return json.loads(text[start:end])
+        except Exception:
+            pass
+    return {"passed": True, "errors": "", "corrected_content": ""}
+
+
+def create_note_article(client: anthropic.Anthropic, topic: str, published_topics: list) -> dict:
+    """
+    AI解説記事を生成する（ファクトチェック付き）
+    戻り値: { "title": str, "content": str, "price": int, "hashtags": list }
+    """
+    avoid = ", ".join(published_topics[-20:]) if published_topics else "なし"
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=4000,
+        messages=[{
+            "role": "user",
+            "content": f"""あなたはAI初心者向け解説サイトのライターです。
+以下のトピックについて、誰でもわかりやすい解説記事を書いてください。
+
+トピック: {topic}
+避けるべき最近のトピック: {avoid}
+
+【記事の方針】
+- 対象読者：昨日パソコンを買ったくらいの完全初心者
+- 専門用語は使わない（使う場合は必ず「〇〇とは〜のこと」と説明）
+- 手順は番号付きリストで具体的に
+- コマンドやコード例がある場合はコードブロックで示す
+- 「実際に試してみた」「こんな使い方がある」という実践的な内容
+- 断定的な誤情報を避け、不確かな情報には「〜とされています」「公式サイトで確認を」と書く
+
+【構成】
+1. タイトル（30文字以内、初心者が「これ知りたい！」と思うもの）
+2. リード文（「〜で悩んでいませんか？」という共感から始める）
+3. 本文（1500〜2500文字、見出し付き）
+   - ## でH2見出し、### でH3見出し
+   - コマンド・コードは ```言語名 ブロック ``` 形式
+4. まとめ
+
+JSON形式で出力：
+{{
+  "title": "記事タイトル",
+  "content": "記事本文（マークダウン）",
+  "price": 0,
+  "hashtags": ["AI", "初心者", "関連タグ"],
+  "summary": "記事の概要（100文字）"
+}}"""
+        }]
+    )
+
+    text = response.content[0].text
     start = text.find("{")
     end = text.rfind("}") + 1
     if start >= 0 and end > start:
         data = json.loads(text[start:end])
     else:
-        # フォールバック
         data = {
-            "title": f"{topic}の使い方【初心者向け】",
+            "title": f"{topic}【初心者向け解説】",
             "content": text,
-            "price": 300,
-            "hashtags": [topic, "Claude", "AI初心者"],
-            "summary": f"{topic}について初心者向けに解説します。"
+            "price": 0,
+            "hashtags": ["AI", "初心者"],
+            "summary": f"{topic}について解説します。"
         }
+
+    # ファクトチェック（最大2回）
+    for attempt in range(2):
+        print(f"[ContentWriter] ファクトチェック中（{attempt + 1}回目）: {data.get('title', '')}")
+        check = fact_check_article(client, data.get("title", ""), data.get("content", ""))
+        if check.get("passed", True):
+            print(f"[ContentWriter] ファクトチェック通過")
+            break
+        else:
+            print(f"[ContentWriter] 修正が必要: {check.get('errors', '')}")
+            if check.get("corrected_content"):
+                data["content"] = check["corrected_content"]
 
     data["topic"] = topic
     data["created_at"] = datetime.now().isoformat()

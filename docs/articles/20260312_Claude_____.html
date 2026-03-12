@@ -87,5 +87,25 @@
 </aside>
   </div>
   <footer><p>© 2026 AI初心者ガイド</p></footer>
+  <script>
+document.querySelectorAll('pre').forEach(function(pre) {
+  var wrapper = document.createElement('div');
+  wrapper.className = 'code-wrapper';
+  pre.parentNode.insertBefore(wrapper, pre);
+  wrapper.appendChild(pre);
+  var btn = document.createElement('button');
+  btn.className = 'copy-btn';
+  btn.textContent = 'コピー';
+  wrapper.appendChild(btn);
+  btn.addEventListener('click', function() {
+    var code = pre.querySelector('code') ? pre.querySelector('code').innerText : pre.innerText;
+    navigator.clipboard.writeText(code).then(function() {
+      btn.textContent = 'コピー済み';
+      btn.classList.add('copied');
+      setTimeout(function() { btn.textContent = 'コピー'; btn.classList.remove('copied'); }, 2000);
+    });
+  });
+});
+</script>
 </body>
 </html>

@@ -1,95 +1,69 @@
 """
 トレンド分析ワーカー
-Google TrendsとXトレンドから今日の旬なトピックを取得する
+Claude APIを使って今日の旬なAIトピックを生成する
 """
 import json
-import time
-import random
+import anthropic
 from datetime import datetime
-
-
-def get_google_trends_jp() -> list[str]:
-    """Google Trendsから日本のトレンドキーワードを取得"""
-    try:
-        from pytrends.request import TrendReq
-        pytrends = TrendReq(hl='ja-JP', tz=540, timeout=(10, 25))
-        trending = pytrends.trending_searches(pn='japan')
-        keywords = trending[0].tolist()[:10]
-        return keywords
-    except Exception as e:
-        print(f"[TrendAnalyzer] Google Trends取得エラー: {e}")
-        return []
-
-
-def get_base_topics(niche: str) -> list[str]:
-    """ニッチに基づくベーストピック（APIが失敗した時のフォールバック）"""
-    base = {
-        "AI活用術": [
-            "ChatGPT 使い方", "Claude AI 活用", "AI副業 稼ぎ方",
-            "Midjourney プロンプト", "AI画像生成", "生成AI 仕事",
-            "ノーコード AI", "AIツール 無料", "プロンプトエンジニアリング"
-        ],
-        "副業": [
-            "在宅副業 初心者", "クラウドワークス 稼ぐ", "ブログ 収益化",
-            "YouTube 副業", "アフィリエイト 始め方", "Webライター 単価",
-            "フリーランス 案件", "スキマ時間 副業"
-        ],
-        "節約": [
-            "電気代 節約 2024", "食費 節約 一人暮らし", "格安SIM 比較",
-            "ふるさと納税 おすすめ", "楽天経済圏", "ポイ活 稼ぎ方",
-            "新NISA 始め方", "積立NISA おすすめ"
-        ],
-        "Claude初心者": [
-            "Claude 始め方 初心者", "Claude 使い方 簡単",
-            "ChatGPT Claude 違い", "AI 登録方法 無料",
-            "Claude 文章 書いてもらう", "AI メール 作成",
-            "Claude 要約 使い方", "AI 仕事 時短",
-            "Claude 無料 できること", "AI 初心者 入門",
-            "Claude 話しかけ方", "AI ツール 比較"
-        ]
-    }
-    results = []
-    for key in base:
-        if any(word in niche for word in key.split("・")):
-            results.extend(base[key])
-    if not results:
-        for v in base.values():
-            results.extend(v)
-    return results[:10]
 
 
 def analyze(config: dict) -> dict:
     """
-    トレンド分析のメイン関数
-    戻り値: { "topics": [...], "source": "google|fallback", "analyzed_at": "..." }
+    AIトピックのリストを生成して返す
+    戻り値: { "topics": [...], "source": "claude", "analyzed_at": "..." }
     """
-    niche = config.get("settings", {}).get("primary_niche", "AI活用術・副業・節約")
+    api_key = config.get("anthropic_api_key", "")
+    client = anthropic.Anthropic(api_key=api_key)
 
-    print("[TrendAnalyzer] トレンド分析開始...")
-    topics = get_google_trends_jp()
+    today = datetime.now().strftime("%Y年%m月%d日")
 
-    if len(topics) >= 5:
-        source = "google_trends"
-        print(f"[TrendAnalyzer] Google Trendsから{len(topics)}件取得")
+    print("[TrendAnalyzer] AIトピック生成中...")
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1000,
+        messages=[{
+            "role": "user",
+            "content": f"""今日は{today}です。
+AIに関する記事トピックを15個生成してください。
+
+以下のカテゴリから満遍なく選んでください：
+- Claude（機能・使い方・モデル・CLAUDE.md・Skillsなど）
+- ChatGPT（最新機能・GPT-4o・プロンプト技法など）
+- 画像生成AI（Midjourney・Stable Diffusion・DALL-Eなど）
+- AI動画・音声（Sora・ElevenLabsなど）
+- AIツール全般（Gemini・Copilot・Perplexityなど）
+- AI初心者向けハウツー（登録方法・使い方入門・比較など）
+
+条件：
+- パソコン初心者でも興味を持ちそうなテーマ
+- 最新・実用的・面白いもの
+- 「〇〇とは？」「〇〇の使い方」「〇〇と〇〇の違い」「〇〇を使って〇〇する方法」形式
+
+JSON形式で出力：
+{{"topics": ["トピック1", "トピック2", ..., "トピック15"]}}"""
+        }]
+    )
+
+    text = response.content[0].text
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        data = json.loads(text[start:end])
+        topics = data.get("topics", [])
     else:
-        topics = get_base_topics(niche)
-        source = "base_topics"
-        print(f"[TrendAnalyzer] ベーストピックを使用: {len(topics)}件")
+        topics = [
+            "Claude 3.5 Sonnetの使い方【初心者向け】",
+            "ChatGPTとClaudeの違いを徹底比較",
+            "CLAUDE.mdとは？設定方法を解説",
+            "Gemini 2.0の新機能まとめ",
+            "AIで画像生成する方法【無料ツール5選】",
+        ]
 
-    # ニッチ関連キーワードを追加
-    niche_keywords = [k.strip() for k in niche.split("・")]
-    combined = niche_keywords + topics
-    # 重複除去
-    seen = set()
-    unique_topics = []
-    for t in combined:
-        if t not in seen:
-            seen.add(t)
-            unique_topics.append(t)
+    print(f"[TrendAnalyzer] {len(topics)}件のトピックを生成")
 
     return {
-        "topics": unique_topics[:15],
-        "source": source,
-        "niche": niche,
+        "topics": topics,
+        "source": "claude",
         "analyzed_at": datetime.now().isoformat()
     }

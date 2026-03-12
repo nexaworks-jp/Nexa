@@ -230,6 +230,26 @@ footer { text-align: center; padding: 40px 0; color: #b0b8c1; font-size: 12px; b
 /* 空状態 */
 .empty-state { text-align: center; padding: 80px 0; color: #b0b8c1; }
 .empty-state p { font-size: 15px; }
+
+/* コードブロック */
+.code-wrapper { position: relative; margin-bottom: 20px; }
+.code-wrapper pre { margin-bottom: 0; }
+.copy-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.2);
+  color: #cdd6f4;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background .15s;
+  font-family: sans-serif;
+}
+.copy-btn:hover { background: rgba(255,255,255,.22); }
+.copy-btn.copied { color: #a6e3a1; border-color: #a6e3a1; }
 """
 
 
@@ -369,6 +389,26 @@ def generate_article_page(article: dict) -> str:
     {sidebar}
   </div>
   <footer><p>© 2026 AI初心者ガイド</p></footer>
+  <script>
+document.querySelectorAll('pre').forEach(function(pre) {{
+  var wrapper = document.createElement('div');
+  wrapper.className = 'code-wrapper';
+  pre.parentNode.insertBefore(wrapper, pre);
+  wrapper.appendChild(pre);
+  var btn = document.createElement('button');
+  btn.className = 'copy-btn';
+  btn.textContent = 'コピー';
+  wrapper.appendChild(btn);
+  btn.addEventListener('click', function() {{
+    var code = pre.querySelector('code') ? pre.querySelector('code').innerText : pre.innerText;
+    navigator.clipboard.writeText(code).then(function() {{
+      btn.textContent = 'コピー済み';
+      btn.classList.add('copied');
+      setTimeout(function() {{ btn.textContent = 'コピー'; btn.classList.remove('copied'); }}, 2000);
+    }});
+  }});
+}});
+</script>
 </body>
 </html>"""
 
@@ -439,6 +479,26 @@ def generate_index_page(articles: list) -> str:
     {sidebar}
   </div>
   <footer><p>© 2026 AI初心者ガイド</p></footer>
+  <script>
+document.querySelectorAll('pre').forEach(function(pre) {{
+  var wrapper = document.createElement('div');
+  wrapper.className = 'code-wrapper';
+  pre.parentNode.insertBefore(wrapper, pre);
+  wrapper.appendChild(pre);
+  var btn = document.createElement('button');
+  btn.className = 'copy-btn';
+  btn.textContent = 'コピー';
+  wrapper.appendChild(btn);
+  btn.addEventListener('click', function() {{
+    var code = pre.querySelector('code') ? pre.querySelector('code').innerText : pre.innerText;
+    navigator.clipboard.writeText(code).then(function() {{
+      btn.textContent = 'コピー済み';
+      btn.classList.add('copied');
+      setTimeout(function() {{ btn.textContent = 'コピー'; btn.classList.remove('copied'); }}, 2000);
+    }});
+  }});
+}});
+</script>
 </body>
 </html>"""
 

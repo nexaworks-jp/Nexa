@@ -212,3 +212,23 @@ footer { text-align: center; padding: 40px 0; color: #b0b8c1; font-size: 12px; b
 /* 空状態 */
 .empty-state { text-align: center; padding: 80px 0; color: #b0b8c1; }
 .empty-state p { font-size: 15px; }
+
+/* コードブロック */
+.code-wrapper { position: relative; margin-bottom: 20px; }
+.code-wrapper pre { margin-bottom: 0; }
+.copy-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(255,255,255,.12);
+  border: 1px solid rgba(255,255,255,.2);
+  color: #cdd6f4;
+  font-size: 11px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background .15s;
+  font-family: sans-serif;
+}
+.copy-btn:hover { background: rgba(255,255,255,.22); }
+.copy-btn.copied { color: #a6e3a1; border-color: #a6e3a1; }
