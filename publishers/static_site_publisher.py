@@ -14,7 +14,7 @@ ARTICLES_DIR = os.path.join(DOCS_DIR, "articles")
 DATA_FILE = os.path.join(DOCS_DIR, "articles.json")
 
 # サイトのベースURL（カスタムドメイン設定後に変更する）
-SITE_URL = "https://nexa.daiki-m.workers.dev"
+SITE_URL = "https://nexa.nexaworks-jp.workers.dev"
 
 
 def load_seo_settings() -> dict:
