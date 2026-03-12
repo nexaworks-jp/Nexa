@@ -191,6 +191,85 @@ JSON形式で出力:
             print(f"[SelfImprover] リンク文言更新エラー: {e}")
 
 
+def optimize_seo_settings(client: anthropic.Anthropic, articles_data: list):
+    """週次でSEO設定をClaudeが分析・更新する"""
+    seo_path = os.path.join(BASE_DIR, "memory", "seo_settings.json")
+
+    default_seo = {
+        "title_templates": [
+            "【初心者向け】{topic}とは？わかりやすく解説",
+            "{topic}の使い方完全ガイド",
+            "{topic}で何ができる？具体的な活用例5選",
+            "{topic}を使ってみた！初心者の正直レビュー",
+            "{topic}の始め方【画像付きで丁寧に説明】"
+        ],
+        "description_template": "{topic}について初心者向けにわかりやすく解説します。専門用語なしで{benefit}方法を紹介。",
+        "meta_keywords_base": ["AI初心者", "人工知能 使い方", "Claude", "ChatGPT", "AI活用", "副業", "プロンプト", "生成AI"],
+        "version": 1
+    }
+
+    if os.path.exists(seo_path):
+        try:
+            with open(seo_path, "r", encoding="utf-8") as f:
+                current = {**default_seo, **json.load(f)}
+        except Exception:
+            current = default_seo
+    else:
+        current = default_seo
+
+    version = current.get("version", 1)
+    recent_titles = [a.get("title", "") for a in (articles_data or [])[-20:]]
+    year = datetime.now().year
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1000,
+        messages=[{
+            "role": "user",
+            "content": f"""AI初心者向けブログのSEO設定を最適化してください。
+
+現在のバージョン: {version}
+直近の記事タイトル例:
+{chr(10).join(f"- {t}" for t in recent_titles[:10]) or "（なし）"}
+
+【最適化の観点】
+1. {year}年のGoogle検索アルゴリズム・検索トレンドへの適応
+2. 初心者が実際に検索するクエリに合わせたタイトルパターン（CTR改善）
+3. EEATを意識したメタディスクリプションの型
+4. 検索ボリュームが見込めるキーワード群の選定
+
+JSON形式で出力（{topic}はプレースホルダーのまま残す）:
+{{
+  "title_templates": [
+    "【初心者向け】{{topic}}とは？わかりやすく解説",
+    "{{topic}}の使い方完全ガイド【{year}年版】",
+    "{{topic}}で何ができる？具体的な活用例5選",
+    "{{topic}}を試してみた！初心者の正直レビュー",
+    "{{topic}}の始め方を画像付きで丁寧に解説"
+  ],
+  "description_template": "{{topic}}を初心者向けにわかりやすく解説。{{benefit}}方法を専門用語なしで紹介します。",
+  "meta_keywords_base": ["AI初心者", "人工知能 使い方", "Claude", "ChatGPT", "生成AI", "AI活用術", "プロンプト入門"],
+  "seo_focus": "現在重視すべきSEOポイントを50文字以内で"
+}}"""
+        }]
+    )
+
+    text = response.content[0].text
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        try:
+            new_seo = json.loads(text[start:end])
+            new_seo["version"] = version + 1
+            new_seo["updated_at"] = datetime.now().isoformat()
+            os.makedirs(os.path.join(BASE_DIR, "memory"), exist_ok=True)
+            with open(seo_path, "w", encoding="utf-8") as f:
+                json.dump(new_seo, f, ensure_ascii=False, indent=2)
+            print(f"[SelfImprover] SEO設定をv{version + 1}に更新: {new_seo.get('seo_focus', '')}")
+        except Exception as e:
+            print(f"[SelfImprover] SEO設定更新エラー: {e}")
+
+
 def update_strategy(strategy: dict, analysis: dict) -> dict:
     """strategy.jsonをAIの分析結果で自動更新する"""
     updates = analysis.get("strategy_updates", {})
@@ -359,9 +438,15 @@ def run(config: dict, all_results: dict, memory: dict, weekly: bool = False) -> 
         # ソース重みの自動更新
         update_source_weights(memory, analysis)
 
-        # リンク文言の最適化（週次のみ）
+        # リンク文言・SEO設定の最適化（週次のみ）
         if weekly:
             optimize_link_patterns(client, memory)
+            try:
+                from publishers.static_site_publisher import load_articles_data
+                articles_data = load_articles_data()
+            except Exception:
+                articles_data = []
+            optimize_seo_settings(client, articles_data)
 
         new_module_path = ""
         if weekly:

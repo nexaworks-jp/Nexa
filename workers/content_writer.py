@@ -18,6 +18,18 @@ def load_style_reference() -> str:
     return ""
 
 
+def load_seo_title_templates() -> list:
+    """memory/seo_settings.json からタイトルテンプレートを読み込む"""
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory", "seo_settings.json")
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f).get("title_templates", [])
+        except Exception:
+            pass
+    return []
+
+
 def find_related_articles(client: anthropic.Anthropic, new_title: str,
                            new_summary: str, existing_articles: list) -> list:
     """
@@ -72,33 +84,40 @@ JSON出力:
 
 def fact_check_article(client: anthropic.Anthropic, title: str, content: str) -> dict:
     """
-    記事のファクトチェックを行う
+    記事のファクトチェックを丁寧に行う
     戻り値: {"passed": bool, "errors": str, "corrected_content": str}
     """
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
-        max_tokens=2000,
+        max_tokens=4000,
         messages=[{
             "role": "user",
-            "content": f"""以下の記事のファクトチェックをしてください。
+            "content": f"""以下の記事を丁寧にファクトチェックしてください。
 
 記事タイトル: {title}
 
 記事本文:
 {content}
 
-チェック観点：
-1. AIツールの機能・仕様に関する明らかな誤り
-2. 存在しないURLやサービス名
-3. 数字・価格・日付の明らかな誤り
-4. 「〜は絶対に〜」など断言しすぎている誤情報
+【チェック観点（すべて確認すること）】
+1. AIツール・サービスの機能・仕様の明らかな誤り（例：存在しない機能、廃止された仕様）
+2. 存在しないURL・サービス名・会社名
+3. 数字・価格・日付の明らかな誤り（例：Claude Proが月額$10など）
+4. 「〜は絶対に〜」「必ず〜」など断言しすぎている誤情報
+5. 矛盾する記述（前半と後半で言っていることが食い違う）
+6. 初心者を混乱させる不正確な比較や説明
+
+【修正方針】
+- 確実に間違いと言えるもの → 正しい内容に修正
+- 不確かな最新情報 → 「〜とされています」「公式サイトでご確認ください」に変更
+- 断言しすぎ → 「〜の場合が多いです」「一般的に〜です」に緩和
+- 誤りがない場合でも、わかりにくい表現があれば読みやすく整える
 
 出力形式：
 - 問題がなければ: {{"passed": true, "errors": "", "corrected_content": ""}}
-- 問題があれば: {{"passed": false, "errors": "エラーの説明", "corrected_content": "修正済みの本文全体"}}
+- 問題があれば: {{"passed": false, "errors": "発見した問題の説明", "corrected_content": "修正済みの本文全体（元の長さを維持）"}}
 
-注意：AIの知識カットオフ以降の最新情報については「最新情報は公式サイトをご確認ください」という形で対応してください。
-確実に間違いと言える場合のみ修正してください。"""
+注意：corrected_contentは本文全体を返すこと。一部だけではなく完全な本文を返してください。"""
         }]
     )
 
@@ -113,12 +132,68 @@ def fact_check_article(client: anthropic.Anthropic, title: str, content: str) ->
     return {"passed": True, "errors": "", "corrected_content": ""}
 
 
+def check_consistency(client: anthropic.Anthropic, title: str, content: str) -> dict:
+    """
+    記事の整合性チェック（画像約束・タイトルと本文のズレなど）
+    戻り値: {"passed": bool, "corrected_title": str, "corrected_content": str}
+    """
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=4000,
+        messages=[{
+            "role": "user",
+            "content": f"""以下の記事の整合性を確認・修正してください。
+
+記事タイトル: {title}
+
+記事本文:
+{content}
+
+【チェック・修正すること】
+1. **画像約束の削除**
+   - タイトルや本文に「画像付き」「スクリーンショット付き」「画像で解説」「図解」などの表現があれば削除または言い換える
+   - 理由：このシステムは画像を自動生成できないため、画像の約束をしてはいけない
+   - 例：「画像付きで解説」→「ステップごとに解説」、「スクリーンショットを見ながら」→「手順を追いながら」
+
+2. **タイトルと本文の一致確認**
+   - タイトルで約束している内容が本文に含まれているか確認
+   - 含まれていなければ、タイトルを修正するか本文に追記する
+
+3. **存在しない参照の削除**
+   - 「次の図」「下の画像」「以下のスクリーンショット」などの参照があれば文章に書き直す
+
+出力形式（どちらの場合も必ず出力）:
+{{
+  "passed": true/false,
+  "issues": "発見した問題の説明（なければ空文字）",
+  "corrected_title": "修正後のタイトル（変更なければ元のタイトルをそのまま）",
+  "corrected_content": "修正後の本文全体（変更なければ元の本文をそのまま）"
+}}"""
+        }]
+    )
+
+    text = response.content[0].text
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        try:
+            return json.loads(text[start:end])
+        except Exception:
+            pass
+    return {"passed": True, "issues": "", "corrected_title": title, "corrected_content": content}
+
+
 def create_note_article(client: anthropic.Anthropic, topic: str, published_topics: list, existing_articles: list = None) -> dict:
     """
     AI解説記事を生成する（ファクトチェック付き）
     戻り値: { "title": str, "content": str, "price": int, "hashtags": list }
     """
     avoid = ", ".join(published_topics[-20:]) if published_topics else "なし"
+    seo_templates = load_seo_title_templates()
+    seo_hint = ""
+    if seo_templates:
+        examples = "\n".join(f"  - {t.replace('{topic}', topic)}" for t in seo_templates[:3])
+        seo_hint = f"\n【SEO最適化タイトル例（参考）】\n{examples}\n"
 
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
@@ -130,7 +205,7 @@ def create_note_article(client: anthropic.Anthropic, topic: str, published_topic
 
 トピック: {topic}
 避けるべき最近のトピック: {avoid}
-
+{seo_hint}
 【記事の方針】
 - 対象読者：昨日パソコンを買ったくらいの完全初心者
 - 専門用語は使わない（使う場合は必ず「〇〇とは〜のこと」と説明）
@@ -138,11 +213,18 @@ def create_note_article(client: anthropic.Anthropic, topic: str, published_topic
 - コマンドやコード例がある場合はコードブロックで示す
 - 「実際に試してみた」「こんな使い方がある」という実践的な内容
 - 断定的な誤情報を避け、不確かな情報には「〜とされています」「公式サイトで確認を」と書く
+- **画像・スクリーンショット・図解への言及は禁止**（「画像付き」「スクリーンショットを参照」などは書かない）
+
+【文字数の目安】
+- 基本: 2000〜3000文字（本文のみ、見出しを除く）
+- 内容が薄いトピックは無理に引き延ばさず1500文字でも可
+- 豊富な手順・活用例がある場合は3000文字を超えてもよい
+- 内容のない冗長な繰り返し・言い換えで文字数を稼がないこと
 
 【構成】
-1. タイトル（30文字以内、初心者が「これ知りたい！」と思うもの）
+1. タイトル（40文字以内、初心者が「これ知りたい！」と思うもの）
 2. リード文（「〜で悩んでいませんか？」という共感から始める）
-3. 本文（1500〜2500文字、見出し付き）
+3. 本文（2000〜3000文字目安、見出し付き）
    - ## でH2見出し、### でH3見出し
    - コマンド・コードは ```言語名 ブロック ``` 形式
 4. まとめ
@@ -172,7 +254,7 @@ JSON形式で出力：
             "summary": f"{topic}について解説します。"
         }
 
-    # ファクトチェック（最大2回）
+    # ファクトチェック（最大2回・丁寧に）
     for attempt in range(2):
         print(f"[ContentWriter] ファクトチェック中（{attempt + 1}回目）: {data.get('title', '')}")
         check = fact_check_article(client, data.get("title", ""), data.get("content", ""))
@@ -180,9 +262,23 @@ JSON形式で出力：
             print(f"[ContentWriter] ファクトチェック通過")
             break
         else:
-            print(f"[ContentWriter] 修正が必要: {check.get('errors', '')}")
+            print(f"[ContentWriter] 事実修正: {check.get('errors', '')}")
             if check.get("corrected_content"):
                 data["content"] = check["corrected_content"]
+
+    # 整合性チェック（画像約束・タイトルと本文のズレ）
+    print(f"[ContentWriter] 整合性チェック中: {data.get('title', '')}")
+    consistency = check_consistency(client, data.get("title", ""), data.get("content", ""))
+    if not consistency.get("passed", True) or consistency.get("issues"):
+        issues = consistency.get("issues", "")
+        if issues:
+            print(f"[ContentWriter] 整合性修正: {issues}")
+        if consistency.get("corrected_title"):
+            data["title"] = consistency["corrected_title"]
+        if consistency.get("corrected_content"):
+            data["content"] = consistency["corrected_content"]
+    else:
+        print(f"[ContentWriter] 整合性チェック通過")
 
     # 関連記事を選定
     if existing_articles is None:

@@ -13,6 +13,26 @@ DOCS_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "docs")
 ARTICLES_DIR = os.path.join(DOCS_DIR, "articles")
 DATA_FILE = os.path.join(DOCS_DIR, "articles.json")
 
+# サイトのベースURL（カスタムドメイン設定後に変更する）
+SITE_URL = "https://nexa.daiki-m.workers.dev"
+
+
+def load_seo_settings() -> dict:
+    """memory/seo_settings.json を読み込む"""
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory", "seo_settings.json")
+    default = {
+        "meta_keywords_base": ["AI初心者", "人工知能 使い方", "Claude", "ChatGPT", "生成AI", "AI活用術"],
+        "title_templates": [],
+        "description_template": ""
+    }
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return {**default, **json.load(f)}
+        except Exception:
+            pass
+    return default
+
 
 # ==================== CSS ====================
 
@@ -418,34 +438,86 @@ def generate_article_page(article: dict) -> str:
     header = HEADER_HTML.format(root="../")
     sidebar = SIDEBAR_HTML
 
+    article_id = article.get("id", "")
+    canonical_url = f"{SITE_URL}/articles/{article_id}.html"
+    description = article.get('summary', title)[:160]
+    seo = load_seo_settings()
+    all_keywords = list(dict.fromkeys(hashtags + seo.get("meta_keywords_base", [])))
+    keywords = ", ".join(all_keywords[:15])
+    iso_date = date_str[:10] if date_str else ""
+
+    json_ld = json.dumps({
+        "@context": "https://schema.org",
+        "@graph": [
+            {
+                "@type": "Article",
+                "headline": title,
+                "description": description,
+                "keywords": keywords,
+                "datePublished": iso_date,
+                "dateModified": iso_date,
+                "author": {"@type": "Organization", "name": "AI初心者ガイド"},
+                "publisher": {
+                    "@type": "Organization",
+                    "name": "AI初心者ガイド",
+                    "url": SITE_URL
+                },
+                "mainEntityOfPage": {"@type": "WebPage", "@id": canonical_url}
+            },
+            {
+                "@type": "BreadcrumbList",
+                "itemListElement": [
+                    {"@type": "ListItem", "position": 1, "name": "トップ", "item": f"{SITE_URL}/index.html"},
+                    {"@type": "ListItem", "position": 2, "name": title, "item": canonical_url}
+                ]
+            }
+        ]
+    }, ensure_ascii=False)
+
     return f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{title} | AI初心者ガイド</title>
-  <meta name="description" content="{article.get('summary', title)}">
+  <meta name="description" content="{description}">
+  <meta name="keywords" content="{keywords}">
+  <link rel="canonical" href="{canonical_url}">
+  <!-- OGP -->
+  <meta property="og:type" content="article">
+  <meta property="og:title" content="{title}">
+  <meta property="og:description" content="{description}">
+  <meta property="og:url" content="{canonical_url}">
+  <meta property="og:site_name" content="AI初心者ガイド">
+  <meta property="og:locale" content="ja_JP">
+  <meta property="article:published_time" content="{iso_date}">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="{title}">
+  <meta name="twitter:description" content="{description}">
+  <!-- JSON-LD -->
+  <script type="application/ld+json">{json_ld}</script>
   <link rel="stylesheet" href="../style.css">
 </head>
 <body>
   {header}
   <div class="article-detail-layout">
     <main>
-      <div class="breadcrumb">
+      <nav class="breadcrumb" aria-label="パンくずリスト">
         <a href="../index.html">トップ</a> &rsaquo; {title}
-      </div>
+      </nav>
       <div class="article-header-card">
         <div class="card-tags">{tags_html}</div>
         <h1>{title}</h1>
         <div class="card-meta">
-          <span class="date">{date_display}</span>
+          <time class="date" datetime="{iso_date}">{date_display}</time>
           {price_badge}
         </div>
       </div>
-      <div class="article-body">
+      <article class="article-body">
         {free_html}
         {paid_wall_html}
-      </div>
+      </article>
       <div class="back-link">
         <a href="../index.html">← 記事一覧に戻る</a>
       </div>
@@ -523,13 +595,46 @@ def generate_index_page(articles: list) -> str:
     header = HEADER_HTML.format(root="")
     sidebar = SIDEBAR_HTML
 
+    index_url = f"{SITE_URL}/index.html"
+    index_description = "パソコンを買ったばかりの方でもわかる。Claude・ChatGPT・GeminiなどのAIツールの使い方をわかりやすく解説します。"
+    seo_idx = load_seo_settings()
+    index_keywords = ", ".join(seo_idx.get("meta_keywords_base", ["AI初心者", "Claude", "ChatGPT", "生成AI"]))
+    index_json_ld = json.dumps({
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        "name": "AI初心者ガイド",
+        "url": SITE_URL,
+        "description": index_description,
+        "inLanguage": "ja",
+        "potentialAction": {
+            "@type": "SearchAction",
+            "target": f"{SITE_URL}/index.html?q={{search_term_string}}",
+            "query-input": "required name=search_term_string"
+        }
+    }, ensure_ascii=False)
+
     return f"""<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI初心者ガイド</title>
-  <meta name="description" content="パソコンを買ったばかりの方でもわかる。AIツールの使い方をわかりやすく解説します。">
+  <title>AI初心者ガイド | AIツールの使い方をわかりやすく解説</title>
+  <meta name="description" content="{index_description}">
+  <meta name="keywords" content="{index_keywords}">
+  <link rel="canonical" href="{index_url}">
+  <!-- OGP -->
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="AI初心者ガイド | AIツールの使い方をわかりやすく解説">
+  <meta property="og:description" content="{index_description}">
+  <meta property="og:url" content="{index_url}">
+  <meta property="og:site_name" content="AI初心者ガイド">
+  <meta property="og:locale" content="ja_JP">
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="AI初心者ガイド">
+  <meta name="twitter:description" content="{index_description}">
+  <!-- JSON-LD -->
+  <script type="application/ld+json">{index_json_ld}</script>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -568,6 +673,43 @@ document.querySelectorAll('pre').forEach(function(pre) {{
 
 
 # ==================== メイン ====================
+
+def generate_sitemap(articles: list):
+    """sitemap.xml を生成して docs/ に保存する"""
+    urls = [f"""  <url>
+    <loc>{SITE_URL}/index.html</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>"""]
+    for a in articles:
+        aid = a.get("id", "")
+        date_str = a.get("created_at", "")[:10]
+        if not aid:
+            continue
+        urls.append(f"""  <url>
+    <loc>{SITE_URL}/articles/{aid}.html</loc>
+    <lastmod>{date_str}</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>""")
+    xml = '<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+    xml += "\n".join(urls)
+    xml += "\n</urlset>"
+    with open(os.path.join(DOCS_DIR, "sitemap.xml"), "w", encoding="utf-8") as f:
+        f.write(xml)
+    print(f"[StaticSite] sitemap.xml 更新（{len(articles)}件）")
+
+
+def generate_robots_txt():
+    """robots.txt を生成して docs/ に保存する（既存なら上書きしない）"""
+    path = os.path.join(DOCS_DIR, "robots.txt")
+    if os.path.exists(path):
+        return
+    content = f"User-agent: *\nAllow: /\nSitemap: {SITE_URL}/sitemap.xml\n"
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("[StaticSite] robots.txt 生成")
+
 
 def load_articles_data() -> list:
     """docs/articles.json から既存記事データを読み込む"""
@@ -635,4 +777,9 @@ def publish(config: dict, articles: list, dry_run: bool = False) -> list:
         f.write(index_html)
 
     print(f"[StaticSite] index.html 更新完了（全{len(all_articles)}記事）")
+
+    # sitemap.xml / robots.txt を更新
+    generate_sitemap(all_articles)
+    generate_robots_txt()
+
     return results

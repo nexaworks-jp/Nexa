@@ -279,6 +279,152 @@ def load_candidate_creators() -> list:
         return [line.strip() for line in f if line.strip()]
 
 
+AI_BEGINNER_KEYWORDS = [
+    "Claude 使い方 初心者",
+    "ChatGPT 初心者 始め方",
+    "AI活用 初心者",
+    "生成AI 使い方",
+]
+
+
+def fetch_popular_ai_articles(keywords: list, per_keyword: int = 10) -> list:
+    """noteの検索APIでAI初心者向け人気記事を取得"""
+    articles = []
+    seen_keys = set()
+    for keyword in keywords:
+        try:
+            resp = requests.get(
+                "https://note.com/api/v1/searches",
+                params={"context": "note", "q": keyword, "order": "like", "per": per_keyword},
+                timeout=10
+            )
+            if resp.status_code != 200:
+                continue
+            data = resp.json()
+            notes = data.get("data", {}).get("notes", []) or data.get("notes", [])
+            for n in notes:
+                key = n.get("key", "")
+                if key and key not in seen_keys:
+                    seen_keys.add(key)
+                    articles.append({
+                        "key": key,
+                        "title": n.get("name", ""),
+                        "likes": n.get("likeCount", 0),
+                        "price": n.get("price", 0),
+                        "creator": (n.get("user") or {}).get("urlname", ""),
+                        "keyword": keyword,
+                    })
+        except Exception as e:
+            print(f"[NoteResearcher] AI記事検索エラー ({keyword}): {e}")
+    return sorted(articles, key=lambda x: x.get("likes", 0), reverse=True)
+
+
+def analyze_ai_beginner_trends(client: anthropic.Anthropic, articles: list) -> dict:
+    """人気AI初心者記事をClaudeで分析してclaude_beginner.mdへの反映内容を生成"""
+    top = articles[:20]
+    titles_str = "\n".join([
+        f"- 「{a['title']}」 (❤️{a['likes']} / ¥{a['price']})"
+        for a in top
+    ])
+
+    response = client.messages.create(
+        model="claude-haiku-4-5-20251001",
+        max_tokens=1500,
+        messages=[{
+            "role": "user",
+            "content": f"""noteで実際によく読まれているAI初心者向け記事のタイトルデータです。
+このデータを分析して、記事執筆ガイドラインへの反映内容を出力してください。
+
+【人気記事タイトル（いいね数順）】
+{titles_str}
+
+分析観点：
+1. よくいいねされているタイトルのパターン・キーワード
+2. 読者が特に求めているトピック・テーマ
+3. 無料 vs 有料の傾向
+4. 今すぐ書くべき推奨トピック（まだ自分が書いていない可能性が高いもの）
+
+JSON形式で出力：
+{{
+  "hot_title_patterns": ["パターン1", "パターン2", "パターン3"],
+  "top_topics": ["トピック1", "トピック2", "トピック3", "トピック4", "トピック5"],
+  "pricing_trend": "無料/有料の傾向（50文字以内）",
+  "recommended_next_articles": ["今すぐ書くべき記事タイトル案1", "案2", "案3"],
+  "style_insight": "タイトル・構成から読み取れる読者ニーズ（100文字以内）"
+}}"""
+        }]
+    )
+
+    text = response.content[0].text
+    start = text.find("{")
+    end = text.rfind("}") + 1
+    if start >= 0 and end > start:
+        try:
+            return json.loads(text[start:end])
+        except Exception:
+            pass
+    return {}
+
+
+def update_claude_beginner_md(articles: list, analysis: dict):
+    """note用/claude_beginner.md の動的データセクションを更新"""
+    os.makedirs(NOTE_DIR, exist_ok=True)
+    filepath = os.path.join(NOTE_DIR, "claude_beginner.md")
+
+    if not os.path.exists(filepath):
+        return
+
+    with open(filepath, "r", encoding="utf-8") as f:
+        existing = f.read()
+
+    now = datetime.now().strftime("%Y-%m-%d")
+    top5 = articles[:5]
+    top_list = "\n".join([
+        f"- 「{a['title']}」 (❤️{a['likes']} / ¥{a['price']})"
+        for a in top5
+    ])
+    recommended = "\n".join([f"- {t}" for t in analysis.get("recommended_next_articles", [])])
+    hot_patterns = "\n".join([f"- {p}" for p in analysis.get("hot_title_patterns", [])])
+    top_topics = "\n".join([f"- {t}" for t in analysis.get("top_topics", [])])
+    pricing = analysis.get("pricing_trend", "")
+    style_insight = analysis.get("style_insight", "")
+
+    dynamic_section = f"""
+---
+
+## 📊 note市場リサーチ（{now}更新・自動）
+
+### いいね数TOP記事
+{top_list}
+
+### 今ホットなタイトルパターン
+{hot_patterns}
+
+### 読者が求めているトピック
+{top_topics}
+
+### 価格傾向
+{pricing}
+
+### 読者ニーズのインサイト
+{style_insight}
+
+### 今すぐ書くべき推奨記事
+{recommended}
+"""
+
+    # 既存の動的セクションを削除して更新
+    if "## 📊 note市場リサーチ" in existing:
+        existing = existing[:existing.index("## 📊 note市場リサーチ") - 4]
+
+    updated = existing.rstrip() + "\n" + dynamic_section
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(updated)
+
+    print(f"[NoteResearcher] claude_beginner.md 市場データ更新完了")
+
+
 def run(config: dict) -> dict:
     """メイン実行関数（週次で呼ぶ）"""
     print("[NoteResearcher] noteリサーチ開始...")
@@ -322,11 +468,22 @@ def run(config: dict) -> dict:
         update_evopsy_md(main_articles, analysis)
     update_market_insights(similar_data, analysis)
 
+    # 6. AI初心者ジャンルのリサーチ（claude_beginner.md 更新用）
+    print("[NoteResearcher] AI初心者記事リサーチ中...")
+    client = anthropic.Anthropic(api_key=config["anthropic_api_key"])
+    ai_articles = fetch_popular_ai_articles(AI_BEGINNER_KEYWORDS)
+    print(f"[NoteResearcher] AI初心者記事 {len(ai_articles)}件取得")
+    ai_analysis = {}
+    if ai_articles:
+        ai_analysis = analyze_ai_beginner_trends(client, ai_articles)
+        update_claude_beginner_md(ai_articles, ai_analysis)
+
     total = sum(len(v) for v in all_articles.values())
     print(f"[NoteResearcher] 完了: {total}記事分析, 類似クリエイター{len(new_creators)}件発見")
 
     return {
         "articles_analyzed": total,
         "new_creators": new_creators,
-        "analysis": analysis
+        "analysis": analysis,
+        "ai_beginner_analysis": ai_analysis
     }
