@@ -270,7 +270,7 @@ def markdown_to_html(text: str) -> str:
 
 HEADER_HTML = """<header>
   <div class="header-inner">
-    <a class="logo" href="{root}index.html">AI初心者ガイド<span>Claudeの使い方</span></a>
+    <a class="logo" href="{root}index.html">AI初心者ガイド</a>
     <nav class="header-nav">
       <a href="{root}index.html">記事一覧</a>
       <a href="https://note.com" target="_blank" rel="noopener">note</a>
@@ -283,7 +283,7 @@ SIDEBAR_HTML = """<aside class="sidebar">
     <h3>このサイトについて</h3>
     <p class="about-text">
       <strong>パソコンを買ったばかりの方でも大丈夫。</strong><br>
-      ClaudeなどAIツールの使い方を、専門用語なしでわかりやすく解説します。
+      AIツールの使い方・活用術を、専門用語なしでわかりやすく解説します。
     </p>
     <a class="btn-note" href="https://note.com" target="_blank" rel="noopener">noteで記事を読む →</a>
   </div>
@@ -368,7 +368,7 @@ def generate_article_page(article: dict) -> str:
     </main>
     {sidebar}
   </div>
-  <footer><p>© 2026 AI初心者ガイド | Claudeの使い方</p></footer>
+  <footer><p>© 2026 AI初心者ガイド</p></footer>
 </body>
 </html>"""
 
@@ -424,8 +424,8 @@ def generate_index_page(articles: list) -> str:
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI初心者ガイド | Claudeの使い方</title>
-  <meta name="description" content="パソコンを買ったばかりの方でもわかる。ClaudeなどAIツールの使い方を解説します。">
+  <title>AI初心者ガイド</title>
+  <meta name="description" content="パソコンを買ったばかりの方でもわかる。AIツールの使い方をわかりやすく解説します。">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -438,7 +438,7 @@ def generate_index_page(articles: list) -> str:
     </main>
     {sidebar}
   </div>
-  <footer><p>© 2026 AI初心者ガイド | Claudeの使い方</p></footer>
+  <footer><p>© 2026 AI初心者ガイド</p></footer>
 </body>
 </html>"""
 
