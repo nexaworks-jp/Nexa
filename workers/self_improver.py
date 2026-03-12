@@ -80,7 +80,9 @@ def analyze_performance(config: dict, all_results: dict, memory: dict) -> dict:
       "name": "新収益機会",
       "description": "収益化方法",
       "effort": "low/medium/high",
-      "estimated_monthly_jpy": 5000
+      "estimated_monthly_jpy": 5000,
+      "required_equipment": ["必要な機材・ソフト（不要なら空リスト[]）"],
+      "equipment_reason": "なぜ必要か（不要なら空文字）"
     }}
   ],
   "weekly_summary": "振り返りと来週の方針（150文字以内）"
@@ -447,6 +449,16 @@ def run(config: dict, all_results: dict, memory: dict, weekly: bool = False) -> 
             except Exception:
                 articles_data = []
             optimize_seo_settings(client, articles_data)
+
+        # 機材が必要な新収益機会があればLINEで通知
+        if weekly:
+            from publishers import line_notifier
+            opps_needing_equipment = [
+                o for o in analysis.get("new_opportunities", [])
+                if o.get("required_equipment")
+            ]
+            if opps_needing_equipment:
+                line_notifier.notify_equipment_needed(config, opps_needing_equipment)
 
         new_module_path = ""
         if weekly:

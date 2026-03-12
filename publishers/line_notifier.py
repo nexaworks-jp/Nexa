@@ -203,6 +203,34 @@ def notify_draft_ready(config: dict, drafts: list[dict]):
     )
 
 
+def notify_equipment_needed(config: dict, opportunities: list):
+    """新収益チャネル開始に必要な機材・購入物をLINEで通知する"""
+    if not opportunities:
+        return
+    line = config.get("line", {})
+    lines = ["🛒 新しい収益チャネルに必要なものがあります\n"]
+    for opp in opportunities:
+        name = opp.get("name", "")
+        items = opp.get("required_equipment", [])
+        reason = opp.get("equipment_reason", "")
+        if not items:
+            continue
+        lines.append(f"【{name}】")
+        for item in items:
+            lines.append(f"  • {item}")
+        if reason:
+            lines.append(f"  理由: {reason}")
+        lines.append("")
+    lines.append("買えそうなら教えてください。準備ができたら自動でスタートします。")
+    if len(lines) <= 3:
+        return
+    text(
+        line.get("channel_access_token", ""),
+        line.get("user_id", ""),
+        "\n".join(lines)
+    )
+
+
 def notify_cost_warning(config: dict, cost_usd: float, limit_usd: float):
     """API費用警告"""
     line = config.get("line", {})
