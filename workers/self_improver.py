@@ -99,6 +99,48 @@ def analyze_performance(config: dict, all_results: dict, memory: dict) -> dict:
     return {}
 
 
+def update_source_weights(memory: dict, analysis: dict):
+    """週次でソース別重みを自動調整する"""
+    import os
+    memory_dir = os.path.join(BASE_DIR, "memory")
+    weights_path = os.path.join(memory_dir, "source_weights.json")
+
+    # 現在の重みを読み込む
+    default_weights = {
+        "hackernews": 1.0,
+        "reddit": 1.2,
+        "zenn": 1.5,
+        "qiita": 1.5,
+        "google_trends": 0.8
+    }
+    if os.path.exists(weights_path):
+        try:
+            with open(weights_path, "r", encoding="utf-8") as f:
+                weights = {**default_weights, **json.load(f)}
+        except Exception:
+            weights = default_weights
+    else:
+        weights = default_weights
+
+    # strategy.jsonのsource_performanceから成績を読む
+    strategy = memory.get("strategy", {})
+    source_perf = strategy.get("source_performance", {})
+
+    if source_perf:
+        # 各ソースのパフォーマンスに基づいて重みを微調整（±0.1）
+        for source, perf in source_perf.items():
+            if source in weights:
+                if perf > 0.6:
+                    weights[source] = min(2.0, weights[source] + 0.1)
+                elif perf < 0.3:
+                    weights[source] = max(0.3, weights[source] - 0.1)
+
+    os.makedirs(memory_dir, exist_ok=True)
+    with open(weights_path, "w", encoding="utf-8") as f:
+        json.dump(weights, f, ensure_ascii=False, indent=2)
+    print(f"[SelfImprover] ソース重み更新: {weights}")
+
+
 def update_strategy(strategy: dict, analysis: dict) -> dict:
     """strategy.jsonをAIの分析結果で自動更新する"""
     updates = analysis.get("strategy_updates", {})
@@ -262,6 +304,9 @@ def run(config: dict, all_results: dict, memory: dict, weekly: bool = False) -> 
 
         updated_strategy = update_strategy(memory.get("strategy", {}), analysis)
         write_improvements_report(analysis)
+
+        # ソース重みの自動更新
+        update_source_weights(memory, analysis)
 
         new_module_path = ""
         if weekly:

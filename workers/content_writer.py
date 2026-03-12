@@ -210,6 +210,25 @@ JSON形式で出力：
     return data
 
 
+def _append_topic_history(title: str):
+    """memory/topics_history.json に記事タイトルを追記する"""
+    import os
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    path = os.path.join(base_dir, "memory", "topics_history.json")
+    history = []
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                history = json.load(f)
+        except Exception:
+            pass
+    history.append(title)
+    history = history[-60:]  # 直近60件のみ保持
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(history, f, ensure_ascii=False, indent=2)
+
+
 def generate_content_batch(config: dict, trends: dict, published_memory: dict) -> dict:
     """
     一回の実行で生成するコンテンツをまとめて作る
@@ -239,6 +258,8 @@ def generate_content_batch(config: dict, trends: dict, published_memory: dict) -
         try:
             article = create_note_article(client, topic, published_topics)
             results["note_articles"].append(article)
+            # トピック履歴に追加（重複防止用）
+            _append_topic_history(article.get("title", ""))
         except Exception as e:
             print(f"[ContentWriter] 記事生成エラー: {e}")
 
