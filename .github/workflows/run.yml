@@ -83,16 +83,7 @@ jobs:
         run: |
           HOUR=$(date -u +%H)
           if [ "$HOUR" = "21" ] || [ "${{ github.event.inputs.force_content }}" = "true" ]; then
-            python3 - << 'EOF'
-import json, sys
-sys.path.insert(0, ".")
-from workers import social_learner
-
-with open("config.json") as f:
-    config = json.load(f)
-
-social_learner.run(config)
-EOF
+            python3 -c "import json, sys; sys.path.insert(0, '.'); from workers import social_learner; config = json.load(open('config.json')); social_learner.run(config)"
           else
             echo "Social learning runs at 6 JST (21 UTC). Current: ${HOUR} UTC. Skipping."
           fi
