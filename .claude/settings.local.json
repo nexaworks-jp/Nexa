@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:note.com)",
+      "WebSearch",
+      "WebFetch(domain:nomad-dev-life.net)",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}
