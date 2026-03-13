@@ -1,0 +1,6 @@
+config.json
+note_cookies.json
+drafts/debug/
+__pycache__/
+*.pyc
+.env
