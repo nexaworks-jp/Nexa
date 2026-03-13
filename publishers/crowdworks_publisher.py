@@ -32,8 +32,12 @@ def save_proposals_for_review(proposals: list) -> str:
         content += f"### アピールポイント\n"
         for point in proposal.get("key_points", []):
             content += f"- {point}\n"
-        content += f"\n### 提案文（コピペ用）\n\n"
+        has_format = proposal.get("has_format", False)
+        label = "応募フォーマット記入済み（コピペ用）" if has_format else "提案文（コピペ用）"
+        content += f"\n### {label}\n\n"
         content += f"```\n{proposal.get('proposal_text', '')}\n```\n\n"
+        if has_format:
+            content += "⚠️ 【本名】【性別】【環境】の部分をご自身の情報に書き換えてから送信してください。\n\n"
         content += "---\n\n"
 
     with open(filename, "w", encoding="utf-8") as f:

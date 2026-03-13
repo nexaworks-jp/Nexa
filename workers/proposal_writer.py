@@ -16,6 +16,35 @@ def write_proposal(client: anthropic.Anthropic, job: dict) -> dict:
     budget = job.get("budget", "要相談")
     platform = job.get("platform", "crowdworks")
 
+    # 応募フォーマットの検出
+    import re
+    format_match = re.search(r'【応募フォーマット】(.+?)(?:【|$)', description, re.DOTALL)
+    application_format = format_match.group(1).strip() if format_match else None
+
+    if application_format:
+        format_instruction = f"""
+【重要】この案件には応募フォーマットがあります。必ずこの形式で回答してください：
+{application_format}
+
+フォーマットの各項目を埋める際の情報：
+- 氏名：【本名】（プレースホルダーのまま残す）
+- 年齢：20代
+- 性別：【性別】（プレースホルダーのまま残す）
+- ご職業：無職（フリーランス、年間売上240万未満）
+- 在宅ワーク環境：【環境】（プレースホルダーのまま残す）
+- 稼働時間：毎日2〜3時間確保可能
+
+proposal_textにはフォーマットに沿った回答のみを入れてください。"""
+    else:
+        format_instruction = """
+提案文の条件：
+- 300〜500文字（長すぎず短すぎず）
+- 具体的な実績や経験を自然に含める（AIアシスト可能なスキルを強調）
+- 依頼者の課題を理解していることを示す
+- 納期・品質への配慮を示す
+- 自然な日本語で、テンプレート感を出さない
+- 末尾に「ぜひ一度ご相談ください」等の一言"""
+
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=1500,
@@ -35,21 +64,15 @@ def write_proposal(client: anthropic.Anthropic, job: dict) -> dict:
 
 【プラットフォーム】
 {platform}
-
-提案文の条件：
-- 300〜500文字（長すぎず短すぎず）
-- 具体的な実績や経験を自然に含める（AIアシスト可能なスキルを強調）
-- 依頼者の課題を理解していることを示す
-- 納期・品質への配慮を示す
-- 自然な日本語で、テンプレート感を出さない
-- 末尾に「ぜひ一度ご相談ください」等の一言
+{format_instruction}
 
 JSON形式で出力：
 {{
   "proposal_text": "提案文本文",
   "estimated_price": "提案金額（例：15,000円）",
   "estimated_days": "納期目安（例：3日）",
-  "key_points": ["アピールポイント1", "アピールポイント2"]
+  "key_points": ["アピールポイント1", "アピールポイント2"],
+  "has_format": {"true" if application_format else "false"}
 }}"""
         }]
     )
