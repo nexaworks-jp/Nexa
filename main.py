@@ -424,6 +424,20 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
             print(f"[Task: Diary] エラー: {e}")
 
 
+    # ソフィア日常つぶやき（毎実行30%の確率・1日2〜3本ランダム分散）
+    import random as _random
+    if not dry_run and _random.random() < 0.30:
+        print("\n[Task: Casual] ソフィア日常つぶやき生成...")
+        try:
+            import anthropic as _anthropic
+            _client = _anthropic.Anthropic(api_key=config.get("anthropic_api_key", ""))
+            casual_post = content_writer.create_x_post(_client, "", style="casual", mood_prompt=mood_prompt)
+            if casual_post.get("text"):
+                x_publisher.publish(config, [casual_post], dry_run)
+                print(f"[Task: Casual] 投稿: {casual_post['text'][:40]}...")
+        except Exception as e:
+            print(f"[Task: Casual] エラー: {e}")
+
     # Step 4: メモリ更新・保存
     strategy["current_focus"] = ", ".join(tasks)
     strategy["reasoning"] = decision.get("reasoning", "")
