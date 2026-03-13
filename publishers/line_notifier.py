@@ -79,23 +79,32 @@ def notify_jobs_found(config: dict, jobs: list[dict]):
 
 
 def notify_proposals_ready(config: dict, proposals: list[dict]):
-    """提案文生成完了通知"""
+    """提案文生成完了通知 + 各提案文の本文をそのまま送信"""
     if not proposals:
         return
     line = config.get("line", {})
-    lines = [f"✍️ 提案文 {len(proposals)}件を生成しました\n"]
-    for p in proposals[:3]:
-        title = p.get("job_title", "")[:25]
+    token = line.get("channel_access_token", "")
+    user_id = line.get("user_id", "")
+
+    # サマリー
+    summary_lines = [f"✍️ 提案文 {len(proposals)}件を生成しました\n"]
+    for i, p in enumerate(proposals[:3], 1):
+        title = p.get("job_title", "")[:30]
         price = p.get("estimated_price", "要相談")
-        lines.append(f"・{title}")
-        lines.append(f"  提案額: {price}")
-    lines.append(f"\n📁 proposals/ フォルダを確認してください")
-    lines.append("⏱️ 所要時間: 約5分（コピペのみ）")
-    text(
-        line.get("channel_access_token", ""),
-        line.get("user_id", ""),
-        "\n".join(lines)
-    )
+        summary_lines.append(f"{i}. {title}")
+        summary_lines.append(f"   提案額: {price}")
+    summary_lines.append("\n↓ 各提案文をこのままコピーして送信できます")
+    text(token, user_id, "\n".join(summary_lines))
+
+    # 各提案文を個別メッセージで送信
+    for i, p in enumerate(proposals[:3], 1):
+        title = p.get("job_title", "")[:30]
+        proposal_text = p.get("proposal_text", "")
+        has_format = p.get("has_format", False)
+        url = p.get("job_url", "")
+        warning = "\n\n⚠️【本名】【性別】【環境】を書き換えてから送信" if has_format else ""
+        msg = f"【案件{i}】{title}\n{url}\n\n─────────────\n{proposal_text}{warning}"
+        text(token, user_id, msg)
 
 
 def notify_risk_alert(config: dict, module: str, reason: str, severity: str = "warning"):
