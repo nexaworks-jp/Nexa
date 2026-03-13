@@ -58,10 +58,24 @@ def save_as_json(proposals: list) -> str:
     return filename
 
 
+def cleanup_old_proposals(days: int = 7):
+    """7日以上経過した提案文ファイルを削除する"""
+    import glob
+    proposal_dir = os.path.join(os.path.dirname(__file__), "..", "proposals")
+    cutoff = datetime.now().timestamp() - days * 86400
+    for path in glob.glob(os.path.join(proposal_dir, "proposals_*.md")) + \
+                glob.glob(os.path.join(proposal_dir, "proposals_*.json")):
+        if os.path.getmtime(path) < cutoff:
+            os.remove(path)
+            print(f"[CrowdWorksPublisher] 古いファイルを削除: {os.path.basename(path)}")
+
+
 def publish(config: dict, proposals: list, dry_run: bool = False) -> list:
     """提案文を保存して提出準備をする"""
     if not proposals:
         return []
+
+    cleanup_old_proposals()
 
     if dry_run:
         print(f"[CrowdWorksPublisher] DRY RUN: {len(proposals)}件の提案文生成済み")
