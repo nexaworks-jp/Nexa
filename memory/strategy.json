@@ -1,50 +1,35 @@
 {
-  "current_focus": "crowdworks, content, saas",
+  "current_focus": "crowdworks",
   "reasoning": "ルールベース判断",
   "week_goals": {
     "note_articles": 14,
     "x_posts": 56
   },
   "performance_notes": [],
-  "last_updated": "2026-03-13T14:32:23.114928",
+  "last_updated": "2026-03-13T14:35:25.318245",
   "iteration": 11,
-  "primary_niche": "AI×ビジネス自動化・SaaS導入支援",
+  "primary_niche": "進化心理学",
   "content_themes": [
-    "自動化で時間を作る仕事術",
-    "SaaS導入で失敗しない方法",
-    "AI時代のフリーランス戦略"
+    "サピエンスの承認欲求と現代SNS",
+    "嫉妬・怒り・嫌悪の進化的起源",
+    "恋愛と配偶戦略の進化心理学",
+    "孤独・孤立が怖い本当の理由",
+    "集団・地位・権力の霊長類的起源",
+    "羞恥心と赤面の生物学的意味",
+    "現代のうつ・不安は進化のミスマッチである"
   ],
   "proposal_keywords": [
-    "業務自動化",
-    "SaaS導入コンサル",
-    "AI活用支援",
-    "マーケティング自動化"
+    "AI副業",
+    "クラウドワークス攻略",
+    "ChatGPT活用",
+    "自動提案システム",
+    "高単価案件獲得"
   ],
-  "target_budget_min": 15000,
+  "target_budget_min": 10000,
   "intensify_channels": [
-    "saas",
     "crowdworks",
-    "content"
+    "note",
+    "booth"
   ],
-  "auto_updated_at": "2026-03-13T14:32:41.122713",
-  "api_schedule": {
-    "content_hour_utc": 21,
-    "improve_hour_utc": 13,
-    "saas_weekdays": [
-      0,
-      3
-    ],
-    "startup_notify": false,
-    "schedule_reason": "SaaS提案が成功初期段階。週2回に増やし案件獲得を加速させる"
-  },
-  "note_pricing": {
-    "note_article_price": 0,
-    "note_paid_ratio": 0.0,
-    "pricing_reason": "収益ゼロで認知拡大フェーズ。無料で読者層構築を優先"
-  },
-  "x_strategy": {
-    "funnel_ratio": 0.35,
-    "dominant_style": "insight",
-    "strategy_reason": "SaaS案件向けに営業価値を高める投稿を35%混入。B2B化を進める"
-  }
+  "auto_updated_at": "2026-03-11T19:08:49.765009"
 }
