@@ -108,6 +108,7 @@ jobs:
           cp -r memory/ /tmp/ai_memory/ 2>/dev/null || true
           cp -r proposals/ /tmp/ai_proposals/ 2>/dev/null || true
           cp -r docs/ /tmp/ai_docs/ 2>/dev/null || true
+          cp -r drafts/ /tmp/ai_drafts/ 2>/dev/null || true
           # 最新のorigin/mainにリセット
           git fetch origin main
           git reset --hard origin/main
@@ -115,6 +116,7 @@ jobs:
           cp -r /tmp/ai_memory/. memory/ 2>/dev/null || true
           cp -r /tmp/ai_proposals/. proposals/ 2>/dev/null || true
           cp -r /tmp/ai_docs/. docs/ 2>/dev/null || true
+          cp -r /tmp/ai_drafts/. drafts/ 2>/dev/null || true
           # コミット＆プッシュ
           git add memory/ proposals/ docs/ drafts/ 2>/dev/null || true
           git diff --staged --quiet || git commit -m "🤖 AI Company run $(date +'%Y-%m-%d %H:%M')"
