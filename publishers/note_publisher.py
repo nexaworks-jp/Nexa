@@ -81,9 +81,19 @@ def _inject_text(page, selector: str, text: str):
     }}""", selector, text)
 
 
+def _load_cookies() -> list:
+    """note_cookies.jsonからクッキーを読み込む"""
+    cookies_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "note_cookies.json")
+    if os.path.exists(cookies_path):
+        with open(cookies_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+
 def auto_post_with_playwright(article: dict, note_email: str, note_password: str) -> dict:
     """
     PlaywrightでNote.comに記事を自動投稿する。
+    クッキー認証を優先し、失敗時はフォームログインにフォールバック。
     戻り値: { "success": bool, "url": str, "title": str }
     """
     try:
@@ -99,6 +109,8 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
 
     print(f"[NotePublisher] 自動投稿開始: '{title}'")
 
+    cookies = _load_cookies()
+
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
@@ -108,32 +120,51 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
             viewport={"width": 1280, "height": 900},
             locale="ja-JP"
         )
+
+        # クッキー認証（優先）
+        if cookies:
+            context.add_cookies(cookies)
+            print(f"[NotePublisher] クッキー認証を試みます ({len(cookies)}件)")
+
         page = context.new_page()
 
         try:
-            # ========== ログイン ==========
-            page.goto("https://note.com/login", timeout=30000)
-            page.wait_for_load_state("networkidle", timeout=20000)
+            # ========== 認証 ==========
+            if cookies:
+                # クッキーがある場合: 直接投稿ページへ
+                page.goto("https://note.com/notes/new", timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=20000)
 
-            # メール入力
-            email_sel = 'input[name="email"], input[type="email"], input[placeholder*="メール"]'
-            page.wait_for_selector(email_sel, timeout=10000)
-            page.fill(email_sel, note_email)
+                if "/login" in page.url:
+                    print("[NotePublisher] クッキー期限切れ → フォームログインにフォールバック")
+                    cookies = []  # フォールバックフラグ
 
-            # パスワード入力
-            pwd_sel = 'input[name="password"], input[type="password"]'
-            page.fill(pwd_sel, note_password)
+            if not cookies:
+                # フォームログイン
+                page.goto("https://note.com/login", timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=20000)
 
-            # ログインボタン
-            page.click('button[type="submit"]')
-            # ログインページから離れたことを確認（ルートリダイレクト対応）
-            page.wait_for_url(lambda url: "note.com" in url and "/login" not in url, timeout=20000)
-            page.wait_for_load_state("networkidle", timeout=15000)
-            print("[NotePublisher] ログイン成功")
+                email_sel = 'input[name="email"], input[type="email"], input[placeholder*="メール"]'
+                page.wait_for_selector(email_sel, timeout=10000)
+                page.fill(email_sel, note_email)
 
-            # ========== 新規記事作成 ==========
-            page.goto("https://note.com/notes/new", timeout=30000)
-            page.wait_for_load_state("networkidle", timeout=20000)
+                pwd_sel = 'input[name="password"], input[type="password"]'
+                page.fill(pwd_sel, note_password)
+
+                page.click('button[type="submit"]')
+                page.wait_for_url(lambda url: "note.com" in url and "/login" not in url, timeout=20000)
+                page.wait_for_load_state("networkidle", timeout=15000)
+                print("[NotePublisher] フォームログイン成功")
+
+                page.goto("https://note.com/notes/new", timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=20000)
+            else:
+                print("[NotePublisher] クッキー認証成功")
+
+            # ========== 新規記事作成（投稿ページでなければ移動） ==========
+            if "notes/new" not in page.url:
+                page.goto("https://note.com/notes/new", timeout=30000)
+                page.wait_for_load_state("networkidle", timeout=20000)
             page.wait_for_timeout(2000)
 
             # ========== タイトル入力 ==========

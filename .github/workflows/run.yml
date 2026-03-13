@@ -73,6 +73,17 @@ jobs:
           }
           EOF
 
+      - name: Create note cookies file
+        env:
+          NOTE_COOKIES: ${{ secrets.NOTE_COOKIES }}
+        run: |
+          if [ -n "$NOTE_COOKIES" ]; then
+            echo "$NOTE_COOKIES" > note_cookies.json
+            echo "note_cookies.json を作成しました"
+          else
+            echo "NOTE_COOKIES シークレット未設定 → フォームログインを使用"
+          fi
+
       - name: Random posting delay (human-like timing)
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
