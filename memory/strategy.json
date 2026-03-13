@@ -1,13 +1,13 @@
 {
-  "current_focus": "crowdworks",
+  "current_focus": "crowdworks, content",
   "reasoning": "ルールベース判断",
   "week_goals": {
     "note_articles": 14,
     "x_posts": 56
   },
   "performance_notes": [],
-  "last_updated": "2026-03-13T14:35:25.318245",
-  "iteration": 11,
+  "last_updated": "2026-03-13T16:55:19.405692",
+  "iteration": 12,
   "primary_niche": "進化心理学",
   "content_themes": [
     "サピエンスの承認欲求と現代SNS",
