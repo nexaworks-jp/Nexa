@@ -122,7 +122,7 @@ def api_post(article: dict, email: str, password: str) -> dict:
 
         # ログインAPI
         login_resp = session.post(
-            "https://note.com/api/v1/sessions",
+            "https://note.com/api/v1/sessions/sign_in",
             json={"login": email, "password": password},
             timeout=15
         )
