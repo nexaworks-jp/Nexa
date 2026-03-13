@@ -75,9 +75,13 @@ jobs:
 
       - name: Random posting delay (human-like timing)
         run: |
-          DELAY=$((RANDOM % 3600))
-          echo "ランダム遅延: ${DELAY}秒 ($(( DELAY / 60 ))分) 待機中..."
-          sleep $DELAY
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "手動実行のためランダム遅延をスキップ"
+          else
+            DELAY=$((RANDOM % 3600))
+            echo "ランダム遅延: ${DELAY}秒 ($(( DELAY / 60 ))分) 待機中..."
+            sleep $DELAY
+          fi
 
       - name: Run social learning (Sofia - 6JST only)
         run: |

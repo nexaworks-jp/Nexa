@@ -126,7 +126,8 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
 
             # ログインボタン
             page.click('button[type="submit"]')
-            page.wait_for_url("**/note.com/**", timeout=20000)
+            # ログインページから離れたことを確認（ルートリダイレクト対応）
+            page.wait_for_url(lambda url: "note.com" in url and "/login" not in url, timeout=20000)
             page.wait_for_load_state("networkidle", timeout=15000)
             print("[NotePublisher] ログイン成功")
 
@@ -340,8 +341,8 @@ def publish(config: dict, articles: list, dry_run: bool = False) -> list:
             continue
 
         if use_playwright and email and password:
-            # 投稿前にランダム待機（0〜20分）でBot検知を回避
-            wait = random.randint(0, 1200)
+            # 投稿前にランダム待機（0〜2分）でBot検知を回避
+            wait = random.randint(0, 120)
             print(f"[NotePublisher] 投稿まで {wait//60}分{wait%60}秒 待機（ランダム）")
             time.sleep(wait)
             result = auto_post_with_playwright(article, email, password)
