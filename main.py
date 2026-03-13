@@ -486,11 +486,44 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     print(f"{'='*52}")
 
 
+def send_weekly_report():
+    """週次LINEサマリーを送信する（weekly.ymlから呼ばれる）"""
+    config = load_config()
+    earnings = load_memory("earnings.json") or {}
+    risk_state = load_memory("risk_state.json") or {}
+
+    try:
+        with open("proposals/improvements.md", encoding="utf-8") as f:
+            lines_md = f.read().split("\n")
+            summary_line = next((l for l in lines_md if l.startswith("**サマリー**")), "")
+            summary = summary_line.replace("**サマリー**: ", "").strip()[:80]
+    except Exception:
+        summary = ""
+
+    total = earnings.get("total_earnings_jpy", 0)
+    by_ch = earnings.get("by_channel", {})
+    api_cost = risk_state.get("api_cost_month_usd", 0) * 150
+    runs = risk_state.get("total_runs", 0)
+
+    msg = f"🌱 週次改善 完了レポート\n\n💰 累計収益: ¥{total:,}\n  note: ¥{by_ch.get('note', 0):,}\n  CW: ¥{by_ch.get('crowdworks', 0):,}\n\n⚙️ 今月のAPI費用: ¥{api_cost:.0f}\n🔄 総実行回数: {runs}回"
+    if summary:
+        msg += f"\n\n📈 今週の分析:\n{summary}"
+
+    from publishers import line_notifier
+    line = config.get("line", {})
+    line_notifier.text(line.get("channel_access_token", ""), line.get("user_id", ""), msg)
+    print("週次サマリー送信完了")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="自律型AIカンパニー")
     parser.add_argument("--dry-run", action="store_true", help="実際には投稿・送信せずにテスト実行")
     parser.add_argument("--report", action="store_true", help="収益レポートを表示")
     parser.add_argument("--weekly", action="store_true", help="週次実行（新モジュール生成含む）")
+    parser.add_argument("--weekly-report", action="store_true", help="週次LINEサマリーを送信")
     parser.add_argument("--force-content", action="store_true", help="時間帯に関係なく記事生成を強制実行")
     args = parser.parse_args()
-    run(dry_run=args.dry_run, report_only=args.report, weekly=args.weekly, force_content=args.force_content)
+    if args.weekly_report:
+        send_weekly_report()
+    else:
+        run(dry_run=args.dry_run, report_only=args.report, weekly=args.weekly, force_content=args.force_content)
