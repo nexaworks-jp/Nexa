@@ -58,19 +58,24 @@ def search_crowdworks_playwright() -> list:
                     page.goto(url, timeout=30000, wait_until="domcontentloaded")
                     page.wait_for_timeout(3000)  # JS描画待ち
 
-                    # 案件リストを取得
-                    job_elements = page.query_selector_all("li.job_list_item, article.job, .job-item, [data-job-id]")
+                    # ジョブページへのリンクを直接取得（構造変化に強い）
+                    link_elements = page.query_selector_all("a[href*='/public/jobs/']")
+                    seen_ids = {j.get("job_id") for j in jobs}
 
-                    if not job_elements:
-                        # セレクタが合わない場合はテキストから抽出
-                        content = page.content()
-                        job_urls = re.findall(r'href="(/public/jobs/(\d+))"', content)
-                        titles = re.findall(r'class="[^"]*job_title[^"]*"[^>]*>([^<]+)<', content)
-
-                        for i, (path, job_id) in enumerate(job_urls[:10]):
-                            if job_id in [j.get("job_id") for j in jobs]:
+                    for el in link_elements:
+                        try:
+                            href = el.get_attribute("href") or ""
+                            job_id_match = re.search(r'/public/jobs/(\d+)', href)
+                            if not job_id_match:
                                 continue
-                            title = titles[i].strip() if i < len(titles) else f"案件#{job_id}"
+                            job_id = job_id_match.group(1)
+                            if job_id in seen_ids:
+                                continue
+                            title = el.inner_text().strip()
+                            # タイトルが空・短すぎ・ボタン文言はスキップ
+                            if len(title) < 5 or title in ["詳細を見る", "応募する", "もっと見る"]:
+                                continue
+                            seen_ids.add(job_id)
                             jobs.append({
                                 "platform": "crowdworks",
                                 "job_id": job_id,
@@ -78,26 +83,10 @@ def search_crowdworks_playwright() -> list:
                                 "url": f"https://crowdworks.jp/public/jobs/{job_id}",
                                 "found_at": datetime.now().isoformat()
                             })
-                    else:
-                        for el in job_elements[:10]:
-                            try:
-                                title_el = el.query_selector(".job_title, h2, h3, .title")
-                                title = title_el.inner_text().strip() if title_el else ""
-                                link_el = el.query_selector("a[href*='/public/jobs/']")
-                                href = link_el.get_attribute("href") if link_el else ""
-                                job_id_match = re.search(r'/public/jobs/(\d+)', href or "")
-                                job_id = job_id_match.group(1) if job_id_match else ""
-
-                                if job_id and title and job_id not in [j.get("job_id") for j in jobs]:
-                                    jobs.append({
-                                        "platform": "crowdworks",
-                                        "job_id": job_id,
-                                        "title": title,
-                                        "url": f"https://crowdworks.jp/public/jobs/{job_id}",
-                                        "found_at": datetime.now().isoformat()
-                                    })
-                            except Exception:
-                                continue
+                            if len(jobs) >= 50:
+                                break
+                        except Exception:
+                            continue
 
                     print(f"[OpportunityScanner] {url.split('term=')[1].split('&')[0]}: {len(jobs)}件累計")
                     time.sleep(2)
