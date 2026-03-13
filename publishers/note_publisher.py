@@ -1,7 +1,8 @@
 """
 note.com パブリッシャー
-Playwrightでnote.comに自動投稿する。
-失敗時は drafts/ に下書き保存してオーナーに手動投稿を依頼する。
+1. requests APIで投稿（Bot検知なし・Playwright不要）
+2. 失敗時はPlaywright（クッキー認証 → フォームログイン）にフォールバック
+3. それも失敗したら drafts/ に下書き保存
 """
 import os
 import json
@@ -79,6 +80,109 @@ def _inject_text(page, selector: str, text: str):
         document.execCommand('selectAll', false, null);
         document.execCommand('insertText', false, txt);
     }}""", selector, text)
+
+
+# ==================== requests APIによる投稿（メイン手段） ====================
+
+def api_post(article: dict, email: str, password: str) -> dict:
+    """
+    requestsライブラリでnote.comの内部APIを直接叩いて投稿する。
+    Playwright不要・Bot検知なし。
+    """
+    import requests
+
+    title = article.get("title", "")
+    content = article.get("content", "")
+    hashtags = article.get("hashtags", [])
+    price = article.get("price", 0)
+
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+        "Referer": "https://note.com/",
+        "Origin": "https://note.com",
+    })
+
+    try:
+        # ========== ログイン ==========
+        # CSRFトークン取得
+        login_page = session.get("https://note.com/login", timeout=15)
+        csrf_token = ""
+        for line in login_page.text.splitlines():
+            if 'csrf-token' in line and 'content=' in line:
+                import re
+                m = re.search(r'content="([^"]+)"', line)
+                if m:
+                    csrf_token = m.group(1)
+                    break
+
+        session.headers.update({"X-CSRF-Token": csrf_token})
+
+        # ログインAPI
+        login_resp = session.post(
+            "https://note.com/api/v1/sessions",
+            json={"login": email, "password": password},
+            timeout=15
+        )
+        if login_resp.status_code not in (200, 201):
+            print(f"[NoteAPI] ログイン失敗: {login_resp.status_code}")
+            return {"success": False, "reason": f"login failed: {login_resp.status_code}"}
+
+        login_data = login_resp.json()
+        user_key = login_data.get("data", {}).get("urlname", "")
+        print(f"[NoteAPI] ログイン成功: {user_key}")
+
+        # CSRFトークン更新（ログイン後に変わる場合あり）
+        me_resp = session.get("https://note.com/api/v1/stats/pv?filter=all", timeout=10)
+        for c in login_resp.cookies:
+            if "csrf" in c.name.lower() or "token" in c.name.lower():
+                session.headers.update({"X-CSRF-Token": c.value})
+
+        # ========== 下書き作成 ==========
+        tag_list = [{"name": t} for t in hashtags[:10]]
+        draft_payload = {
+            "title": title,
+            "body": content,
+            "hashtag_notes_attributes": tag_list,
+            "price": price,
+            "is_paid_only_body": False,
+        }
+        draft_resp = session.post(
+            "https://note.com/api/v3/drafts",
+            json=draft_payload,
+            timeout=30
+        )
+        if draft_resp.status_code not in (200, 201):
+            print(f"[NoteAPI] 下書き作成失敗: {draft_resp.status_code} {draft_resp.text[:200]}")
+            return {"success": False, "reason": f"draft failed: {draft_resp.status_code}"}
+
+        draft_data = draft_resp.json()
+        note_key = draft_data.get("data", {}).get("key", "") or draft_data.get("key", "")
+        print(f"[NoteAPI] 下書き作成成功: key={note_key}")
+
+        # ========== 公開 ==========
+        publish_resp = session.post(
+            f"https://note.com/api/v2/notes/{note_key}/publish",
+            json={"visibility": "public"},
+            timeout=15
+        )
+        if publish_resp.status_code not in (200, 201):
+            print(f"[NoteAPI] 公開失敗: {publish_resp.status_code} {publish_resp.text[:200]}")
+            return {"success": False, "reason": f"publish failed: {publish_resp.status_code}"}
+
+        note_url = f"https://note.com/{user_key}/n/{note_key}"
+        pub_data = publish_resp.json()
+        if pub_data.get("data", {}).get("noteUrl"):
+            note_url = pub_data["data"]["noteUrl"]
+
+        print(f"[NoteAPI] 投稿成功: {note_url}")
+        return {"success": True, "url": note_url, "title": title, "is_draft": False}
+
+    except Exception as e:
+        print(f"[NoteAPI] エラー: {e}")
+        return {"success": False, "reason": str(e)}
 
 
 def _load_cookies() -> list:
@@ -371,15 +475,23 @@ def publish(config: dict, articles: list, dry_run: bool = False) -> list:
             results.append({"success": True, "dry_run": True, "title": article.get("title")})
             continue
 
-        if use_playwright and email and password:
-            # 投稿前にランダム待機（0〜2分）でBot検知を回避
-            wait = random.randint(0, 120)
-            print(f"[NotePublisher] 投稿まで {wait//60}分{wait%60}秒 待機（ランダム）")
-            time.sleep(wait)
-            result = auto_post_with_playwright(article, email, password)
+        if email and password:
+            # 1. requestsでAPIを直接呼び出す（Bot検知なし）
+            result = api_post(article, email, password)
             if result.get("success"):
                 results.append(result)
                 continue
+            print("[NotePublisher] API投稿失敗 → Playwrightにフォールバック")
+
+            # 2. Playwright（クッキー or フォームログイン）
+            if use_playwright:
+                wait = random.randint(0, 120)
+                print(f"[NotePublisher] 投稿まで {wait//60}分{wait%60}秒 待機（ランダム）")
+                time.sleep(wait)
+                result = auto_post_with_playwright(article, email, password)
+                if result.get("success"):
+                    results.append(result)
+                    continue
             print("[NotePublisher] 自動投稿失敗 → 下書き保存にフォールバック")
 
         result = save_as_draft(article)
