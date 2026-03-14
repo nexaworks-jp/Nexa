@@ -50,26 +50,38 @@ def fetch_hackernews(limit: int = 15) -> list[dict]:
 
 
 def fetch_reddit_ai(limit: int = 10) -> list[dict]:
-    """Reddit r/artificialintelligence からホット投稿を取得"""
+    """Reddit AIサブレからRSS経由でホット投稿を取得（403回避）"""
+    import xml.etree.ElementTree as ET
     results = []
-    try:
-        url = "https://www.reddit.com/r/artificial/hot.json?limit=25"
-        req = urllib.request.Request(url, headers={"User-Agent": "AINewsBot/1.0"})
-        with urllib.request.urlopen(req, timeout=10) as r:
-            data = json.loads(r.read())
-
-        for post in data.get("data", {}).get("children", [])[:limit]:
-            pd = post.get("data", {})
-            results.append({
-                "title": pd.get("title", ""),
-                "score": pd.get("score", 0),
-                "comments": pd.get("num_comments", 0),
-                "source": "reddit",
-                "url": f"https://reddit.com{pd.get('permalink', '')}"
+    rss_urls = [
+        "https://www.reddit.com/r/artificial/hot/.rss?limit=25",
+        "https://www.reddit.com/r/LocalLLaMA/hot/.rss?limit=25",
+    ]
+    for url in rss_urls:
+        try:
+            req = urllib.request.Request(url, headers={
+                "User-Agent": "Mozilla/5.0 (compatible; RSS reader)",
+                "Accept": "application/rss+xml, application/xml"
             })
-    except Exception as e:
-        print(f"[TrendAnalyzer] Reddit取得エラー: {e}")
-    return results
+            with urllib.request.urlopen(req, timeout=10) as r:
+                root = ET.fromstring(r.read())
+            ns = {"atom": "http://www.w3.org/2005/Atom"}
+            for entry in root.findall(".//atom:entry", ns)[:limit]:
+                title_el = entry.find("atom:title", ns)
+                link_el = entry.find("atom:link", ns)
+                if title_el is not None and title_el.text:
+                    results.append({
+                        "title": title_el.text.strip(),
+                        "score": 50,
+                        "comments": 0,
+                        "source": "reddit",
+                        "url": link_el.get("href", "") if link_el is not None else ""
+                    })
+        except Exception:
+            continue
+    if not results:
+        print(f"[TrendAnalyzer] Reddit RSS取得エラー: 全URLが失敗")
+    return results[:limit]
 
 
 def fetch_zenn_trending(limit: int = 10) -> list[dict]:
@@ -102,18 +114,23 @@ def fetch_zenn_trending(limit: int = 10) -> list[dict]:
 
 
 def fetch_google_trends(limit: int = 10) -> list[dict]:
-    """Google Trendsから日本のAI関連急上昇ワードを取得"""
+    """Google Trends RSS（日本）からAI関連急上昇ワードを取得"""
+    import xml.etree.ElementTree as ET
     results = []
     try:
-        from pytrends.request import TrendReq
-        pytrends = TrendReq(hl='ja-JP', tz=540, timeout=(10, 25))
-        trending = pytrends.trending_searches(pn='japan')
-        keywords = trending[0].tolist()[:30]
+        url = "https://trends.google.co.jp/trending/rss?geo=JP"
+        req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            root = ET.fromstring(r.read())
 
         ai_keywords = ["ai", "gpt", "claude", "gemini", "chatgpt", "生成ai", "人工知能",
-                       "midjourney", "copilot", "llm", "画像生成", "deepseek", "sora"]
+                       "copilot", "llm", "画像生成", "deepseek", "sora", "anthropic"]
 
-        for kw in keywords:
+        for item in root.findall(".//item"):
+            title_el = item.find("title")
+            if title_el is None or not title_el.text:
+                continue
+            kw = title_el.text.strip()
             if any(ak in kw.lower() for ak in ai_keywords):
                 results.append({
                     "title": kw,
@@ -126,6 +143,29 @@ def fetch_google_trends(limit: int = 10) -> list[dict]:
                     break
     except Exception as e:
         print(f"[TrendAnalyzer] Google Trends取得エラー: {e}")
+    return results
+
+
+def fetch_qiita_trending(limit: int = 10) -> list[dict]:
+    """QiitaのトレンドAI記事をAPIで取得"""
+    results = []
+    try:
+        query = urllib.parse.urlencode({"query": "AI OR LLM OR Claude OR ChatGPT OR 生成AI", "per_page": 20})
+        url = f"https://qiita.com/api/v2/items?{query}"
+        req = urllib.request.Request(url, headers={"User-Agent": "AINewsBot/1.0"})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            articles = json.loads(r.read())
+
+        for a in articles[:limit]:
+            results.append({
+                "title": a.get("title", ""),
+                "score": a.get("likes_count", 0),
+                "comments": a.get("comments_count", 0),
+                "source": "qiita",
+                "url": a.get("url", "")
+            })
+    except Exception as e:
+        print(f"[TrendAnalyzer] Qiita取得エラー: {e}")
     return results
 
 
@@ -262,6 +302,10 @@ def analyze(config: dict) -> dict:
     zn = fetch_zenn_trending(10)
     print(f"[TrendAnalyzer] Zenn: {len(zn)}件")
     candidates.extend(zn)
+
+    qi = fetch_qiita_trending(10)
+    print(f"[TrendAnalyzer] Qiita: {len(qi)}件")
+    candidates.extend(qi)
 
     gt = fetch_google_trends(5)
     print(f"[TrendAnalyzer] Google Trends: {len(gt)}件")
