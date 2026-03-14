@@ -13,7 +13,7 @@
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_175908.md",
     "status": "pending",
     "created_at": "2026-03-14T17:59:08.922294",
-    "retry_count": 1
+    "retry_count": 3
   },
   {
     "title": "Claude Codeで自分好みの朝刊配信システムを作る｜実践的なAPI連携ガイド",
@@ -111,6 +111,69 @@
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_183813.md",
     "status": "pending",
     "created_at": "2026-03-14T18:38:13.157652",
+    "retry_count": 0
+  },
+  {
+    "title": "自分のパソコンでAIを動かせるって本当？ローカル実行の基礎知識",
+    "hashtags": [
+      "AI",
+      "ローカルAI",
+      "Ollama",
+      "初心者向け",
+      "プライバシー",
+      "パソコン"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_193827.md",
+    "status": "pending",
+    "created_at": "2026-03-14T19:38:27.541888",
+    "retry_count": 0
+  },
+  {
+    "title": "AI企業の経営課題から学ぶこと｜xAIが直面する技術開発と人材確保の挑戦",
+    "hashtags": [
+      "AI",
+      "xAI",
+      "EonMusk",
+      "AI企業",
+      "業界ニュース",
+      "AI開発"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_194213.md",
+    "status": "pending",
+    "created_at": "2026-03-14T19:42:13.332999",
+    "retry_count": 0
+  },
+  {
+    "title": "Claude の長文処理が進化｜100万トークン対応で何ができるようになった？",
+    "hashtags": [
+      "Claude",
+      "AI",
+      "1Mcontext",
+      "Opus4.6",
+      "長文処理",
+      "業務効率化"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_194615.md",
+    "status": "pending",
+    "created_at": "2026-03-14T19:46:15.655701",
+    "retry_count": 0
+  },
+  {
+    "title": "ヘリウム供給危機とサプライチェーンの複雑性｜Qatar関連ニュースから学ぶ",
+    "hashtags": [
+      "サプライチェーン",
+      "半導体",
+      "テクノロジー",
+      "初心者向け",
+      "ニュース解説"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_195008.md",
+    "status": "pending",
+    "created_at": "2026-03-14T19:50:08.681228",
     "retry_count": 0
   }
 ]
