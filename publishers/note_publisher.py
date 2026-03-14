@@ -106,28 +106,46 @@ def api_post(article: dict, email: str, password: str) -> dict:
     })
 
     try:
+        import re as _re
         # ========== ログイン ==========
-        # CSRFトークン取得
+        # CSRFトークン取得（SPAのため meta タグ・JS変数・Cookieを複数手段で試みる）
         login_page = session.get("https://note.com/login", timeout=15)
         csrf_token = ""
         for line in login_page.text.splitlines():
             if 'csrf-token' in line and 'content=' in line:
-                import re
-                m = re.search(r'content="([^"]+)"', line)
+                m = _re.search(r'content="([^"]+)"', line)
                 if m:
                     csrf_token = m.group(1)
+                    break
+        # CookieからCSRFを取得（SPAパターン）
+        if not csrf_token:
+            for c in session.cookies:
+                if "csrf" in c.name.lower() or "token" in c.name.lower():
+                    csrf_token = c.value
                     break
 
         session.headers.update({"X-CSRF-Token": csrf_token})
 
-        # ログインAPI
-        login_resp = session.post(
-            "https://note.com/api/v1/sessions/sign_in",
-            json={"login": email, "password": password},
-            timeout=15
-        )
+        # ログインAPI（フィールド名を複数試みる）
+        login_resp = None
+        for login_payload in [
+            {"email_or_nickname": email, "password": password},
+            {"login": email, "password": password},
+            {"email": email, "password": password},
+        ]:
+            r = session.post(
+                "https://note.com/api/v1/sessions/sign_in",
+                json=login_payload,
+                timeout=15
+            )
+            print(f"[NoteAPI] ログイン試行 payload={list(login_payload.keys())[0]}: {r.status_code}")
+            if r.status_code in (200, 201):
+                login_resp = r
+                break
+            login_resp = r  # 最後の結果を保持
+
         if login_resp.status_code not in (200, 201):
-            print(f"[NoteAPI] ログイン失敗: {login_resp.status_code}")
+            print(f"[NoteAPI] ログイン失敗: {login_resp.status_code} body={login_resp.text[:200]}")
             return {"success": False, "reason": f"login failed: {login_resp.status_code}"}
 
         login_data = login_resp.json()
@@ -254,9 +272,15 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
                 # フォームログイン
                 page.goto("https://note.com/login", timeout=30000)
                 page.wait_for_load_state("networkidle", timeout=20000)
+                page.wait_for_timeout(3000)  # SPA描画待機
 
-                email_sel = 'input[name="email"], input[type="email"], input[placeholder*="メール"]'
-                page.wait_for_selector(email_sel, timeout=10000)
+                email_sel = (
+                    'input[name="email"], input[name="email_or_nickname"], '
+                    'input[type="email"], input[autocomplete="email"], '
+                    'input[placeholder*="メール"], input[placeholder*="アドレス"], '
+                    'input[placeholder="メールアドレス"]'
+                )
+                page.wait_for_selector(email_sel, timeout=20000)
                 page.fill(email_sel, note_email)
 
                 pwd_sel = 'input[name="password"], input[type="password"]'

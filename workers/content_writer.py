@@ -355,9 +355,35 @@ difficultyの基準（1〜5）:
     text = response.content[0].text
     start = text.find("{")
     end = text.rfind("}") + 1
+    data = None
     if start >= 0 and end > start:
-        data = json.loads(text[start:end])
-    else:
+        try:
+            data = json.loads(text[start:end])
+        except json.JSONDecodeError:
+            # コードブロック等でJSONが壊れている場合：フィールドを個別抽出
+            import re
+            title_m = re.search(r'"title"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+            summary_m = re.search(r'"summary"\s*:\s*"((?:[^"\\]|\\.)*)"', text)
+            hashtags_m = re.search(r'"hashtags"\s*:\s*\[([^\]]*)\]', text)
+            price_m = re.search(r'"price"\s*:\s*(\d+)', text)
+            difficulty_m = re.search(r'"difficulty"\s*:\s*(\d+)', text)
+            # contentはJSONブロック全体の後を使うか、本文全体をフォールバック
+            content_m = re.search(r'"content"\s*:\s*"([\s\S]*?)(?:(?<!\\)",\s*"(?:price|hashtags|summary|difficulty|title))|(?:(?<!\\)"\s*\})', text)
+            extracted_title = title_m.group(1) if title_m else f"{topic}【初心者向け解説】"
+            extracted_content = content_m.group(1).encode().decode('unicode_escape', errors='replace') if content_m else text
+            extracted_hashtags = []
+            if hashtags_m:
+                extracted_hashtags = [h.strip().strip('"') for h in hashtags_m.group(1).split(",") if h.strip().strip('"')]
+            data = {
+                "title": extracted_title,
+                "content": extracted_content,
+                "price": int(price_m.group(1)) if price_m else price,
+                "hashtags": extracted_hashtags or ["AI", "初心者"],
+                "summary": summary_m.group(1) if summary_m else f"{topic}について解説します。",
+                "difficulty": int(difficulty_m.group(1)) if difficulty_m else 2,
+            }
+            print(f"[ContentWriter] JSON修復: title={extracted_title[:30]}")
+    if data is None:
         data = {
             "title": f"{topic}【初心者向け解説】",
             "content": text,

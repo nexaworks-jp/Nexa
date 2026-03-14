@@ -59,6 +59,11 @@ class XPublisher:
             print("[XPublisher] レート制限。15分待機...")
             time.sleep(900)
             return {"success": False, "error": "rate_limit"}
+        except tweepy.Forbidden as e:
+            print(f"[XPublisher] 403 Forbidden: アプリの書き込み権限が不足しています。"
+                  f"developer.twitter.com でアプリのPermissionsを'Read and Write'に変更し、"
+                  f"アクセストークンを再発行してconfig.jsonを更新してください。")
+            return {"success": False, "error": "403_forbidden_check_permissions"}
         except Exception as e:
             print(f"[XPublisher] 投稿エラー: {e}")
             return {"success": False, "error": str(e)}
