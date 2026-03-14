@@ -407,7 +407,9 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
                     'input[name="email"], input[name="email_or_nickname"], '
                     'input[type="email"], input[autocomplete="email"], '
                     'input[placeholder*="メール"], input[placeholder*="アドレス"], '
-                    'input[placeholder="メールアドレス"]'
+                    'input[placeholder="メールアドレス"], '
+                    'input[placeholder*="mail"], input[placeholder*="note ID"], '
+                    'input[placeholder*="ID"]'
                 )
                 page.wait_for_selector(email_sel, timeout=20000)
                 page.fill(email_sel, note_email)
