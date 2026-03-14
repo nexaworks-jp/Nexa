@@ -515,21 +515,41 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
                 page.keyboard.type(content[:3000], delay=5)
                 print("[NotePublisher] 本文入力完了 (keyboard fallback)")
 
-            page.wait_for_timeout(1000)
+            page.wait_for_timeout(2000)
 
             # ========== 公開ボタンクリック ==========
+            # 公開ボタン前にスクリーンショット（デバッグ用）
+            _save_debug_screenshot(page, prefix="before_publish")
+
+            # ページ上のボタンを全てログ出力（デバッグ）
+            try:
+                btns = page.evaluate("""() => {
+                    return Array.from(document.querySelectorAll('button')).map(b => ({
+                        text: b.innerText.trim().slice(0, 30),
+                        cls: b.className.slice(0, 60),
+                        disabled: b.disabled
+                    }));
+                }""")
+                print(f"[NotePublisher] ページ上のボタン: {btns[:10]}")
+            except Exception:
+                pass
+
             publish_btn_selectors = [
                 'button:has-text("公開する")',
                 'button:has-text("投稿する")',
                 'button:has-text("公開")',
+                'button:has-text("Publish")',
                 '[class*="publish"]:has-text("公開")',
+                '[class*="submit"]',
+                '[data-testid*="publish"]',
+                'header button:last-child',
             ]
             publish_clicked = False
             for sel in publish_btn_selectors:
                 try:
                     page.locator(sel).first.click(timeout=5000)
                     publish_clicked = True
-                    print("[NotePublisher] 公開ボタンクリック")
+                    print(f"[NotePublisher] 公開ボタンクリック ({sel})")
                     break
                 except Exception:
                     continue
@@ -602,17 +622,17 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
             return {"success": False, "reason": str(e), "title": title}
 
 
-def _save_debug_screenshot(page):
-    """エラー時のデバッグ用スクリーンショットを保存"""
+def _save_debug_screenshot(page, prefix="error"):
+    """デバッグ用スクリーンショットを保存"""
     try:
         debug_dir = os.path.join(
             os.path.dirname(os.path.dirname(__file__)), "drafts", "debug"
         )
         os.makedirs(debug_dir, exist_ok=True)
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = os.path.join(debug_dir, f"error_{ts}.png")
+        path = os.path.join(debug_dir, f"{prefix}_{ts}.png")
         page.screenshot(path=path)
-        print(f"[NotePublisher] デバッグスクリーンショット: {path}")
+        print(f"[NotePublisher] スクリーンショット: {path}")
     except Exception:
         pass
 
