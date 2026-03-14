@@ -131,7 +131,14 @@ def api_post(article: dict, email: str, password: str) -> dict:
             return {"success": False, "reason": f"login failed: {login_resp.status_code}"}
 
         login_data = login_resp.json()
+        if login_data.get("error"):
+            err_msg = login_data["error"].get("message", str(login_data["error"]))
+            print(f"[NoteAPI] ログイン失敗: {err_msg}")
+            return {"success": False, "reason": f"login error: {err_msg}"}
         user_key = login_data.get("data", {}).get("urlname", "")
+        if not user_key:
+            print(f"[NoteAPI] ログイン失敗: urlname取得できず。レスポンス={str(login_data)[:200]}")
+            return {"success": False, "reason": "login failed: no urlname"}
         print(f"[NoteAPI] ログイン成功: {user_key}")
 
         # CSRFトークン更新（ログイン後に変わる場合あり）

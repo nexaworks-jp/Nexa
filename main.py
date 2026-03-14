@@ -141,11 +141,17 @@ def run_content_task(config, trends, published, dry_run, mood_prompt: str = ""):
         elif drafts:
             line_notifier.notify_draft_ready(config, drafts)
 
-    # トピック使用履歴を更新
-    for a in articles:
+    # トピック使用履歴・投稿記録を更新
+    for a, r in zip(articles, note_results):
         t = a.get("topic", "")
         if t and t not in published.get("topics_used", []):
             published.setdefault("topics_used", []).append(t)
+        if r.get("success") and not r.get("is_draft"):
+            published.setdefault("note_articles", []).append({
+                "title": a.get("title", ""),
+                "url": r.get("url", ""),
+                "published_at": datetime.now().isoformat(),
+            })
 
     return {
         "note": note_results,
