@@ -651,12 +651,6 @@ def publish(config: dict, articles: list, dry_run: bool = False) -> list:
     # デフォルトtrue（メール・パスワードが設定されていれば自動投稿）
     use_playwright = config.get("settings", {}).get("note_auto_post", True)
 
-    # 前回失敗した下書きの再投稿を先に試みる（pipeline inbox）
-    if email and password and not dry_run:
-        retried = _retry_pending_drafts(email, password)
-        if retried:
-            print(f"[NotePublisher] 下書き{retried}件を再投稿しました")
-
     for article in articles:
         if dry_run:
             print(f"[NotePublisher] DRY RUN: '{article.get('title')}' (¥{article.get('price', 0)})")

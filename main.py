@@ -313,6 +313,19 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     # Step 3: タスク実行
     all_results = {}
 
+    # パイプラインリトライ（毎回実行・コンテンツ生成不要）
+    if not dry_run:
+        try:
+            note_cfg = config.get("note", {})
+            retried = note_publisher._retry_pending_drafts(
+                note_cfg.get("email", ""),
+                note_cfg.get("password", "")
+            )
+            if retried:
+                print(f"[Pipeline] 下書き{retried}件を再投稿しました")
+        except Exception as e:
+            print(f"[Pipeline] リトライエラー（無視）: {e}")
+
     if "content" in tasks or "all" in tasks:
         ok, reason = risk_manager.can_run("note", risk_state)
         if ok:
