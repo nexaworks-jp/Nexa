@@ -1,0 +1,59 @@
+[
+  {
+    "title": "ローカルでAIを実行できるって本当？｜クラウドとの違いから始める初心者ガイド",
+    "hashtags": [
+      "AI",
+      "ローカルAI",
+      "Ollama",
+      "初心者向け",
+      "技術解説",
+      "クラウドAI"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_175908.md",
+    "status": "pending",
+    "created_at": "2026-03-14T17:59:08.922294",
+    "retry_count": 0
+  },
+  {
+    "title": "Claude Codeで自分好みの朝刊配信システムを作る｜実践的なAPI連携ガイド",
+    "hashtags": [
+      "AI",
+      "初心者"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_180055.md",
+    "status": "pending",
+    "created_at": "2026-03-14T18:00:55.218148",
+    "retry_count": 0
+  },
+  {
+    "title": "Claude Codeで仕様駆動開発に挑戦｜テストファーストでコード品質を上げる方法",
+    "hashtags": [
+      "Claude",
+      "クロード",
+      "テスト駆動開発",
+      "TDD",
+      "仕様駆動開発",
+      "コード品質",
+      "開発手法"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_180148.md",
+    "status": "pending",
+    "created_at": "2026-03-14T18:01:48.998690",
+    "retry_count": 0
+  },
+  {
+    "title": "Playwright + OWASP ZAP + Claude Codeで脆弱性診断を自動化する｜セキュアな開発フロー構築ガイド",
+    "hashtags": [
+      "AI",
+      "初心者"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_180332.md",
+    "status": "pending",
+    "created_at": "2026-03-14T18:03:32.428738",
+    "retry_count": 0
+  }
+]
