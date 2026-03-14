@@ -57,7 +57,7 @@ def notify_startup(config: dict):
     text(
         line.get("channel_access_token", ""),
         line.get("user_id", ""),
-        f"🤖 【Nexa】起動\n{now}\n\n本日のタスクを開始します。"
+        f"🤖 Nexa起動\n{now}\n\n本日のタスクを開始します。"
     )
 
 
@@ -136,7 +136,7 @@ def notify_daily_report(config: dict, earnings: dict, risk_state: dict, proposal
     api_cost_jpy = risk_state.get("api_cost_today_usd", 0) * 150
     runs = risk_state.get("total_runs", 0)
 
-    msg = f"""📊 【Nexa】日次レポート
+    msg = f"""📊 Nexa日次レポート
 {datetime.now().strftime('%m月%d日')}
 
 💰 累計収益: ¥{total:,}
