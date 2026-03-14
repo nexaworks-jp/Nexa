@@ -11,6 +11,134 @@ import time
 from datetime import datetime
 
 
+# ==================== 下書きパイプライン（cc-secretaryのinbox概念） ====================
+
+def _pipeline_path() -> str:
+    return os.path.join(os.path.dirname(os.path.dirname(__file__)), "drafts", "pipeline.json")
+
+
+def _load_pipeline() -> list:
+    path = _pipeline_path()
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return []
+
+
+def _save_pipeline(pipeline: list):
+    path = _pipeline_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(pipeline, f, ensure_ascii=False, indent=2)
+
+
+def _register_draft(article: dict, draft_path: str):
+    """下書きをpipeline.jsonに登録する"""
+    pipeline = _load_pipeline()
+    if any(p.get("title") == article.get("title") for p in pipeline):
+        return  # 重複スキップ
+    pipeline.append({
+        "title": article.get("title", ""),
+        "hashtags": article.get("hashtags", []),
+        "price": article.get("price", 0),
+        "draft_path": draft_path,
+        "status": "pending",
+        "created_at": datetime.now().isoformat(),
+        "retry_count": 0,
+    })
+    _save_pipeline(pipeline)
+    pending = sum(1 for p in pipeline if p.get("status") == "pending")
+    print(f"[NotePublisher] パイプライン登録 (未投稿{pending}件)")
+
+
+def _retry_pending_drafts(email: str, password: str) -> int:
+    """pipeline.jsonのpending記事を1件だけAPI再投稿試行"""
+    pipeline = _load_pipeline()
+    success = 0
+    updated = False
+
+    for item in pipeline:
+        if item.get("status") != "pending":
+            continue
+        if item.get("retry_count", 0) >= 5:
+            item["status"] = "give_up"
+            updated = True
+            continue
+
+        draft_path = item.get("draft_path", "")
+        if not os.path.exists(draft_path):
+            item["status"] = "missing"
+            updated = True
+            continue
+
+        # mdファイルから本文を再構築
+        try:
+            with open(draft_path, "r", encoding="utf-8") as f:
+                md = f.read()
+            lines = md.split("\n")
+            # frontmatter(---)を除いたタイトル行以降を本文とする
+            in_front = False
+            content_lines = []
+            skip_front = True
+            for line in lines:
+                if skip_front and line.strip() == "---":
+                    in_front = not in_front
+                    if not in_front:
+                        skip_front = False
+                    continue
+                if not skip_front:
+                    content_lines.append(line)
+            # 先頭の # タイトル行を除く
+            if content_lines and content_lines[0].startswith("# "):
+                content_lines = content_lines[1:]
+            # X導線セクション(---)以降を除く
+            sep = next((i for i, l in enumerate(content_lines) if l.strip() == "---"), len(content_lines))
+            body = "\n".join(content_lines[:sep]).strip()
+        except Exception:
+            item["retry_count"] = item.get("retry_count", 0) + 1
+            updated = True
+            break
+
+        article = {
+            "title": item["title"],
+            "content": body,
+            "hashtags": item.get("hashtags", []),
+            "price": item.get("price", 0),
+        }
+
+        result = api_post(article, email, password)
+        item["retry_count"] = item.get("retry_count", 0) + 1
+        updated = True
+
+        if result.get("success"):
+            item["status"] = "posted"
+            item["posted_at"] = datetime.now().isoformat()
+            item["url"] = result.get("url", "")
+            print(f"[NotePublisher] 下書き再投稿成功: {item['title'][:30]}")
+            success += 1
+        else:
+            print(f"[NotePublisher] 下書き再投稿失敗({item['retry_count']}回目): {item['title'][:30]}")
+        break  # 1実行1件のみ
+
+    if updated:
+        _save_pipeline(pipeline)
+    return success
+
+
+def get_pipeline_status() -> dict:
+    """パイプライン状況サマリーを返す"""
+    pipeline = _load_pipeline()
+    return {
+        "pending": sum(1 for p in pipeline if p.get("status") == "pending"),
+        "posted": sum(1 for p in pipeline if p.get("status") == "posted"),
+        "give_up": sum(1 for p in pipeline if p.get("status") == "give_up"),
+        "total": len(pipeline),
+    }
+
+
 # ==================== 下書き保存（フォールバック） ====================
 
 def save_as_draft(article: dict) -> dict:
@@ -60,6 +188,7 @@ created_at: {article.get('created_at', '')}
         f.write(content)
 
     print(f"[NotePublisher] 下書き保存: {filename}")
+    _register_draft(article, filename)
     return {
         "success": True,
         "saved_to": filename,
@@ -499,6 +628,12 @@ def publish(config: dict, articles: list, dry_run: bool = False) -> list:
     password = note_cfg.get("password", "")
     # デフォルトtrue（メール・パスワードが設定されていれば自動投稿）
     use_playwright = config.get("settings", {}).get("note_auto_post", True)
+
+    # 前回失敗した下書きの再投稿を先に試みる（pipeline inbox）
+    if email and password and not dry_run:
+        retried = _retry_pending_drafts(email, password)
+        if retried:
+            print(f"[NotePublisher] 下書き{retried}件を再投稿しました")
 
     for article in articles:
         if dry_run:

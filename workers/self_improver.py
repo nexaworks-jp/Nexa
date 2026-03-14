@@ -446,6 +446,130 @@ def write_improvements_report(analysis: dict) -> str:
     return filepath
 
 
+def write_weekly_report(analysis: dict, memory: dict, all_results: dict):
+    """
+    cc-companyのWeekly Review + cc-secretaryのWeekly Review Templateを参考にした
+    構造化ダッシュボードをproposals/weekly_report.mdに生成する。
+    オーナーが5分で全体状況を把握できるように設計。
+    """
+    proposals_dir = os.path.join(BASE_DIR, "proposals")
+    os.makedirs(proposals_dir, exist_ok=True)
+    filepath = os.path.join(proposals_dir, "weekly_report.md")
+
+    now = datetime.now()
+    earnings = memory.get("earnings", {})
+    strategy = memory.get("strategy", {})
+    risk = memory.get("risk_state", {})
+
+    # パイプラインステータス取得
+    try:
+        from publishers.note_publisher import get_pipeline_status
+        pipeline = get_pipeline_status()
+    except Exception:
+        pipeline = {"pending": 0, "posted": 0, "give_up": 0, "total": 0}
+
+    # 収益データ
+    total_jpy = earnings.get("total_earnings_jpy", 0)
+    by_channel = earnings.get("by_channel", {})
+    total_runs = risk.get("total_runs", 0)
+    x_strategy = strategy.get("x_strategy", {})
+    note_pricing = strategy.get("note_pricing", {})
+
+    # 今週の実行結果サマリー
+    results_lines = "\n".join(
+        f"  - {k}: {'✅ 成功' if v else '⏭ スキップ'}"
+        for k, v in (all_results or {}).items()
+    )
+
+    improvements = analysis.get("improvements", [])
+    opportunities = analysis.get("new_opportunities", [])
+    weekly_summary = analysis.get("weekly_summary", "")
+
+    impr_lines = ""
+    for item in improvements[:5]:
+        pri = {"high": "🔴", "medium": "🟡", "low": "🟢"}.get(item.get("priority", "low"), "⚪")
+        impr_lines += f"  - {pri} {item.get('title', '')} — {item.get('description', '')[:60]}\n"
+
+    opp_lines = ""
+    for opp in opportunities[:3]:
+        e = {"low": "✅", "medium": "⚡", "high": "💪"}.get(opp.get("effort", "medium"), "")
+        est = opp.get("estimated_monthly_jpy", 0)
+        opp_lines += f"  - {e} {opp.get('name', '')} (推定月{est:,}円)\n"
+
+    content = f"""# 週次ダッシュボード — {now.strftime('%Y-%m-%d')}
+> 自律型AIカンパニー Nexa | cc-company Review Format
+
+---
+
+## 📊 KPIダッシュボード
+
+| 指標 | 値 |
+|------|----|
+| 累計収益 | ¥{total_jpy:,} |
+| note収益 | ¥{by_channel.get('note', 0):,} |
+| CrowdWorks収益 | ¥{by_channel.get('crowdworks', 0):,} |
+| 総実行回数 | {total_runs}回 |
+| note下書き未投稿 | {pipeline.get('pending', 0)}件 |
+| note投稿済み累計 | {pipeline.get('posted', 0)}件 |
+
+---
+
+## 📝 コンテンツ部門レビュー
+
+### 今週の実行結果
+{results_lines or "  - データなし"}
+
+### 下書きパイプライン状況
+  - pending（未投稿）: {pipeline.get('pending', 0)}件
+  - posted（投稿済み）: {pipeline.get('posted', 0)}件
+  - give_up（リトライ上限）: {pipeline.get('give_up', 0)}件
+
+### note価格戦略
+  - 現在の価格: ¥{note_pricing.get('note_article_price', 0)}
+  - 有料記事割合: {int(note_pricing.get('note_paid_ratio', 0) * 100)}%
+  - 理由: {note_pricing.get('pricing_reason', '')}
+
+---
+
+## 📣 X（マーケティング）部門レビュー
+
+  - 投稿スタイル: {x_strategy.get('dominant_style', 'insight')}
+  - 導線割合: {int(x_strategy.get('funnel_ratio', 0) * 100)}%
+  - 戦略メモ: {x_strategy.get('strategy_reason', '')}
+
+---
+
+## 🧠 CEO判断ログ
+
+### 週次サマリー
+{weekly_summary}
+
+### 優先改善案
+{impr_lines or "  - なし"}
+
+### 新収益機会
+{opp_lines or "  - なし"}
+
+---
+
+## ✅ 来週のアクション
+
+> このセクションはオーナーが手動で記入してください
+
+- [ ]
+- [ ]
+- [ ]
+
+---
+*自動生成: {now.isoformat()} | Nexa自律型AIカンパニー*
+"""
+
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write(content)
+    print(f"[SelfImprover] 週次レポート生成: {filepath}")
+    return filepath
+
+
 def generate_weekly_module(config: dict, analysis: dict) -> str:
     """週次実行時：新しい収益モジュールのコードを自動生成してproposals/new_modules/に保存"""
     client = anthropic.Anthropic(api_key=config["anthropic_api_key"])
@@ -759,6 +883,9 @@ def run(config: dict, all_results: dict, memory: dict, weekly: bool = False) -> 
 
         updated_strategy = update_strategy(memory.get("strategy", {}), analysis)
         write_improvements_report(analysis)
+
+        if weekly:
+            write_weekly_report(analysis, memory, all_results)
 
         # ソース重みの自動更新
         update_source_weights(memory, analysis)
