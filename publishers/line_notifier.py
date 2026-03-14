@@ -193,18 +193,15 @@ def notify_weekly_improvement(config: dict, improvements: dict, new_modules: lis
 
 
 def notify_draft_ready(config: dict, drafts: list[dict]):
-    """note下書き完成通知（画像挿入・投稿はオーナーが実施）"""
+    """note自動投稿失敗・下書き保存通知（次回実行で自動リトライ）"""
     if not drafts:
         return
     line = config.get("line", {})
-    lines = [f"📝 note下書きが完成しました（{len(drafts)}本）\n"]
+    lines = [f"⚠️ note投稿を一時保存しました（{len(drafts)}本）\n"]
     for i, d in enumerate(drafts[:3], 1):
         title = d.get("title", "不明")[:30]
-        price = d.get("price", 0)
         lines.append(f"{i}. {title}")
-        lines.append(f"   価格: ¥{price}")
-    lines.append(f"\n📁 drafts/ フォルダを確認してください")
-    lines.append("🖼️ 画像を挿入して投稿をお願いします（5分程度）")
+    lines.append(f"\n次回の自動実行時にリトライします。対応不要です。")
     text(
         line.get("channel_access_token", ""),
         line.get("user_id", ""),
