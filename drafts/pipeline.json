@@ -13,7 +13,7 @@
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_175908.md",
     "status": "pending",
     "created_at": "2026-03-14T17:59:08.922294",
-    "retry_count": 0
+    "retry_count": 1
   },
   {
     "title": "Claude Codeで自分好みの朝刊配信システムを作る｜実践的なAPI連携ガイド",
@@ -54,6 +54,63 @@
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_180332.md",
     "status": "pending",
     "created_at": "2026-03-14T18:03:32.428738",
+    "retry_count": 0
+  },
+  {
+    "title": "ローカルでAIが本当に動く？クラウド版との違いを初心者向けに解説",
+    "hashtags": [
+      "AI",
+      "初心者向け",
+      "ローカルAI",
+      "Claude",
+      "Ollama",
+      "クラウドAI"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_183035.md",
+    "status": "pending",
+    "created_at": "2026-03-14T18:30:35.573048",
+    "retry_count": 0
+  },
+  {
+    "title": "Claude Codeのエージェント機能を使いこなす｜複数AIの協働で何ができるか【実践ガイド】",
+    "hashtags": [
+      "AI",
+      "初心者"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_183318.md",
+    "status": "pending",
+    "created_at": "2026-03-14T18:33:18.469951",
+    "retry_count": 0
+  },
+  {
+    "title": "AIツール選びで失敗しない｜自分に合ったサービスを見つける3つの判断基準",
+    "hashtags": [
+      "AI",
+      "初心者向け",
+      "AIツール",
+      "選び方",
+      "無料",
+      "ChatGPT",
+      "Claude"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_183521.md",
+    "status": "pending",
+    "created_at": "2026-03-14T18:35:21.262269",
+    "retry_count": 0
+  },
+  {
+    "title": "Claude Code × Skills/MCPの連携で開発効率が激変｜実装パターン別の活用Tips",
+    "hashtags": [
+      "AI",
+      "初心者"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_183813.md",
+    "status": "pending",
+    "created_at": "2026-03-14T18:38:13.157652",
     "retry_count": 0
   }
 ]
