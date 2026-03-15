@@ -225,43 +225,28 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
     """
     tag_list = [{"name": t} for t in hashtags[:10]]
 
-    # note.com APIは "name" フィールドを使う（"title" は無視される）
-    # レスポンスの "name":null がその証拠
-    base_name_payload = {
-        "name": title,           # note.comのAPIフィールド名は name
-        "body": content,
-        "hashtag_notes_attributes": tag_list,
-        "price": price,
-        "is_paid_only_body": False,
-    }
-    # 念のため title も併記
-    base_title_payload = {
-        "title": title,
-        "body": content,
-        "hashtag_notes_attributes": tag_list,
-        "price": price,
-        "is_paid_only_body": False,
-    }
+    # note.com API確認済みフィールド:
+    #   name = タイトル（"title"は無視される、レスポンスの name:"..." で確認）
+    #   body = 本文フィールド名が不明（body:null のまま）
+    #        → "text", "body_text", "content" も試す
+    # 本文フィールド名の候補（body が null だったため総当たり）
+    body_fields = ["body", "text", "body_text", "content"]
 
-    # 作成 + 公開を一発で試みる（name=title, status=published）
-    draft_candidates = [
-        # name + status=published で一発公開
-        ("https://note.com/api/v1/text_notes",
-         {**base_name_payload, "status": "published"}),
-        # name + status=public
-        ("https://note.com/api/v1/text_notes",
-         {**base_name_payload, "status": "public"}),
-        # name のみ（下書き作成）
-        ("https://note.com/api/v1/text_notes",
-         base_name_payload),
-        # title フォールバック
-        ("https://note.com/api/v1/text_notes",
-         base_title_payload),
-        ("https://note.com/api/v2/text_notes",
-         base_name_payload),
-        ("https://note.com/api/v3/drafts",
-         base_name_payload),
-    ]
+    # 作成ペイロード候補: 本文フィールド名 × status=published で一発公開を最初に試みる
+    draft_candidates = []
+    for bf in body_fields:
+        draft_candidates.append((
+            "https://note.com/api/v1/text_notes",
+            {"name": title, bf: content, "hashtag_notes_attributes": tag_list,
+             "price": price, "is_paid_only_body": False, "status": "published"},
+        ))
+    # 下書きのみ（status なし）
+    for bf in body_fields:
+        draft_candidates.append((
+            "https://note.com/api/v1/text_notes",
+            {"name": title, bf: content, "hashtag_notes_attributes": tag_list,
+             "price": price, "is_paid_only_body": False},
+        ))
 
     note_key = ""
     note_id = ""
@@ -293,19 +278,21 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
     if not note_key:
         return {"success": False, "reason": "全エンドポイントで下書き作成失敗"}
 
-    # PUT /api/v1/text_notes/{id} で status 更新（name フィールドで送る）
+    # PUT /api/v1/text_notes/{id} で status 更新
+    # 本文フィールド名 × status 値を総当たり
     if note_id:
-        put_payloads = [
-            {**base_name_payload, "status": "published"},   # name + published
-            {**base_name_payload, "status": "public"},      # name + public
-            {"name": title, "status": "published"},          # 最小限
-            {"name": title, "status": "public"},
-            {**base_title_payload, "status": "published"},   # title フォールバック
-        ]
+        put_payloads = []
+        for bf in body_fields:
+            for st in ("published", "public"):
+                put_payloads.append(
+                    {"name": title, bf: content, "hashtag_notes_attributes": tag_list,
+                     "price": price, "is_paid_only_body": False, "status": st}
+                )
         for body in put_payloads:
             try:
                 r = session.put(f"https://note.com/api/v1/text_notes/{note_id}", json=body, timeout=30)
-                print(f"[NoteAPI] PUT公開試行 {note_id} status={body.get('status')!r}: {r.status_code} {r.text[:200]}")
+                bf_used = [k for k in body if k in body_fields]
+                print(f"[NoteAPI] PUT公開試行 {note_id} body_field={bf_used} status={body.get('status')!r}: {r.status_code} {r.text[:150]}")
                 if r.status_code in (200, 201):
                     d2 = r.json().get("data", r.json())
                     note_url = (
