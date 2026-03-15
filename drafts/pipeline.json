@@ -13,7 +13,7 @@
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_175908.md",
     "status": "pending",
     "created_at": "2026-03-14T17:59:08.922294",
-    "retry_count": 7
+    "retry_count": 8
   },
   {
     "title": "Claude Codeで自分好みの朝刊配信システムを作る｜実践的なAPI連携ガイド",
@@ -272,6 +272,62 @@
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260315_221142.md",
     "status": "pending",
     "created_at": "2026-03-15T22:11:42.579536",
+    "retry_count": 0
+  },
+  {
+    "title": "機械学習とLLMの仕組みを、本当に初心者向けに解説｜図で理解する生成AIの基礎",
+    "hashtags": [
+      "機械学習",
+      "LLM",
+      "AI",
+      "初心者向け",
+      "生成AI",
+      "基礎知識"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260315_223115.md",
+    "status": "pending",
+    "created_at": "2026-03-15T22:31:15.181681",
+    "retry_count": 0
+  },
+  {
+    "title": "AI支援コーディングは本当に仕事を変えるのか｜エンジニア100人のリアルな声から見える現実",
+    "hashtags": [
+      "AI",
+      "コーディング",
+      "エンジニア",
+      "Claude",
+      "開発効率",
+      "仕事の未来"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260315_223328.md",
+    "status": "pending",
+    "created_at": "2026-03-15T22:33:28.868867",
+    "retry_count": 0
+  },
+  {
+    "title": "生成AIでパワーポイント資料を効率化｜2026年最新・無料ツールから業務統合まで初心者向けガイド【初心者向け解説】",
+    "hashtags": [
+      "AI",
+      "初心者"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260315_223514.md",
+    "status": "pending",
+    "created_at": "2026-03-15T22:35:14.494832",
+    "retry_count": 0
+  },
+  {
+    "title": "Claude CodeでLLMのコンテキストを資産化する｜MCP活用で開発スタイルを根本から変える実装パターン",
+    "hashtags": [
+      "AI",
+      "初心者"
+    ],
+    "price": 0,
+    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260315_223754.md",
+    "status": "pending",
+    "created_at": "2026-03-15T22:37:54.258249",
     "retry_count": 0
   }
 ]
