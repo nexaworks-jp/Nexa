@@ -224,7 +224,18 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
     ログイン方法に関わらず共通で使用。
     """
     tag_list = [{"name": t} for t in hashtags[:10]]
-    base_payload = {
+
+    # note.com APIは "name" フィールドを使う（"title" は無視される）
+    # レスポンスの "name":null がその証拠
+    base_name_payload = {
+        "name": title,           # note.comのAPIフィールド名は name
+        "body": content,
+        "hashtag_notes_attributes": tag_list,
+        "price": price,
+        "is_paid_only_body": False,
+    }
+    # 念のため title も併記
+    base_title_payload = {
         "title": title,
         "body": content,
         "hashtag_notes_attributes": tag_list,
@@ -232,24 +243,24 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
         "is_paid_only_body": False,
     }
 
-    # 作成時に status=public を含めて一発公開を試みる候補（実績順）
+    # 作成 + 公開を一発で試みる（name=title, status=published）
     draft_candidates = [
-        # パターンA: status=public で一発公開
+        # name + status=published で一発公開
         ("https://note.com/api/v1/text_notes",
-         {**base_payload, "status": "public"}),
-        ("https://note.com/api/v2/text_notes",
-         {**base_payload, "status": "public"}),
-        # パターンB: status なし（下書き作成のみ）
+         {**base_name_payload, "status": "published"}),
+        # name + status=public
         ("https://note.com/api/v1/text_notes",
-         base_payload),
+         {**base_name_payload, "status": "public"}),
+        # name のみ（下書き作成）
+        ("https://note.com/api/v1/text_notes",
+         base_name_payload),
+        # title フォールバック
+        ("https://note.com/api/v1/text_notes",
+         base_title_payload),
         ("https://note.com/api/v2/text_notes",
-         base_payload),
-        ("https://note.com/api/v3/text_notes",
-         base_payload),
-        ("https://note.com/api/v1/notes",
-         {**base_payload, "kind": "text"}),
+         base_name_payload),
         ("https://note.com/api/v3/drafts",
-         base_payload),
+         base_name_payload),
     ]
 
     note_key = ""
@@ -258,14 +269,14 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
     for endpoint, payload in draft_candidates:
         try:
             r = session.post(endpoint, json=payload, timeout=30)
-            print(f"[NoteAPI] 下書き作成試行 {endpoint.split('/')[-2]}/{endpoint.split('/')[-1]}: {r.status_code} {r.text[:150]}")
+            print(f"[NoteAPI] 下書き作成試行 {endpoint.split('/')[-2]}/{endpoint.split('/')[-1]}: {r.status_code} {r.text[:200]}")
             if r.status_code in (200, 201):
                 data = r.json()
                 d = data.get("data", data)
                 note_key = str(d.get("key") or d.get("id") or "")
                 note_id  = str(d.get("id") or "")
-                # status=public で作成できた場合はそのまま成功
                 status = d.get("status") or d.get("publishStatus") or ""
+                # 一発公開成功
                 if note_key and status in ("public", "published"):
                     note_url = (
                         d.get("noteUrl") or d.get("url") or
@@ -274,7 +285,7 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
                     print(f"[NoteAPI] 一発公開成功: {note_url}")
                     return {"success": True, "url": note_url, "title": title, "is_draft": False}
                 if note_key:
-                    print(f"[NoteAPI] 下書き作成成功: key={note_key} id={note_id} status={status!r}")
+                    print(f"[NoteAPI] 下書き作成成功: key={note_key} id={note_id} status={status!r} name={d.get('name')!r}")
                     break
         except Exception as e:
             print(f"[NoteAPI] 下書き作成エラー {endpoint.split('/')[-1]}: {e}")
@@ -282,26 +293,19 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
     if not note_key:
         return {"success": False, "reason": "全エンドポイントで下書き作成失敗"}
 
-    # PUT /api/v1/text_notes/{数値id} が 422 を返した（405/404 でない）= エンドポイントは存在する
-    # → 全ペイロード（status=public含む）で送れば公開できるはず（最優先）
-    full_payload = {**base_payload, "status": "public"}
-
+    # PUT /api/v1/text_notes/{id} で status 更新（name フィールドで送る）
     if note_id:
-        put_candidates = [
-            ("PUT", f"https://note.com/api/v1/text_notes/{note_id}", full_payload),
-            ("PUT", f"https://note.com/api/v2/text_notes/{note_id}", full_payload),
-            ("PUT", f"https://note.com/api/v1/text_notes/{note_id}", {**base_payload, "status": "published"}),
-            ("PUT", f"https://note.com/api/v1/text_notes/{note_id}", {**base_payload, "publish_status": "public"}),
+        put_payloads = [
+            {**base_name_payload, "status": "published"},   # name + published
+            {**base_name_payload, "status": "public"},      # name + public
+            {"name": title, "status": "published"},          # 最小限
+            {"name": title, "status": "public"},
+            {**base_title_payload, "status": "published"},   # title フォールバック
         ]
-        if note_key and note_key != note_id:
-            put_candidates += [
-                ("PUT", f"https://note.com/api/v1/text_notes/{note_key}", full_payload),
-            ]
-        for method, endpoint, body in put_candidates:
+        for body in put_payloads:
             try:
-                r = session.put(endpoint, json=body, timeout=30)
-                label = f"{method} {'/'.join(endpoint.split('/')[-2:])}"
-                print(f"[NoteAPI] PUT公開試行 {label}: {r.status_code} {r.text[:150]}")
+                r = session.put(f"https://note.com/api/v1/text_notes/{note_id}", json=body, timeout=30)
+                print(f"[NoteAPI] PUT公開試行 {note_id} status={body.get('status')!r}: {r.status_code} {r.text[:200]}")
                 if r.status_code in (200, 201):
                     d2 = r.json().get("data", r.json())
                     note_url = (
@@ -313,7 +317,7 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
             except Exception as e:
                 print(f"[NoteAPI] PUT公開エラー: {e}")
 
-    # フォールバック: POST /publish エンドポイント各種
+    # フォールバック: POST /publish
     keys_to_try = list(dict.fromkeys(filter(None, [note_key, note_id])))
     for k in keys_to_try:
         for ep in [
