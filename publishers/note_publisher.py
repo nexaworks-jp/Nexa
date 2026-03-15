@@ -218,113 +218,104 @@ created_at: {article.get('created_at', '')}
 
 # ==================== 下書き作成・公開の共通ヘルパー ====================
 
+def _content_to_html(text: str) -> str:
+    """マークダウン本文をnote.com互換のHTML（<p>タグ）に変換"""
+    import html as _html
+    paragraphs = text.split("\n\n")
+    parts = []
+    for p in paragraphs:
+        p = p.strip()
+        if not p:
+            continue
+        escaped = _html.escape(p).replace("\n", "<br>")
+        parts.append(f"<p>{escaped}</p>")
+    return "".join(parts) or "<p></p>"
+
+
 def _create_and_publish(session, title: str, content: str, hashtags: list, price: int, user_key: str) -> dict:
     """
-    下書き作成 → 公開 を複数エンドポイントで総当たり試行。
-    ログイン方法に関わらず共通で使用。
+    ブラウザのDevToolsで確認した実際のAPIフローで投稿:
+    1. POST /api/v1/text_notes          → 空の下書き作成 → note_id 取得
+    2. POST /api/v1/draft_save?id=...   → 本文(free_body=HTML)・タイトル保存
+    3. PUT  /api/v1/text_notes/{id}     → 全フィールドで公開（200 OK）
     """
-    tag_list = [{"name": t} for t in hashtags[:10]]
+    free_body = _content_to_html(content)
+    hashtag_list = [{"name": t} for t in hashtags[:10]]
 
-    # note.com API確認済みフィールド:
-    #   name = タイトル（"title"は無視される、レスポンスの name:"..." で確認）
-    #   body = 本文フィールド名が不明（body:null のまま）
-    #        → "text", "body_text", "content" も試す
-    # 本文フィールド名の候補（body が null だったため総当たり）
-    body_fields = ["body", "text", "body_text", "content"]
+    # ── Step 1: 空の下書き作成 ──
+    r1 = session.post(
+        "https://note.com/api/v1/text_notes",
+        json={"template_key": None},
+        timeout=30,
+    )
+    print(f"[NoteAPI] Step1 下書き作成: {r1.status_code} {r1.text[:150]}")
+    if r1.status_code not in (200, 201):
+        return {"success": False, "reason": f"Step1 failed: {r1.status_code}"}
 
-    # 作成ペイロード候補: 本文フィールド名 × status=published で一発公開を最初に試みる
-    draft_candidates = []
-    for bf in body_fields:
-        draft_candidates.append((
-            "https://note.com/api/v1/text_notes",
-            {"name": title, bf: content, "hashtag_notes_attributes": tag_list,
-             "price": price, "is_paid_only_body": False, "status": "published"},
-        ))
-    # 下書きのみ（status なし）
-    for bf in body_fields:
-        draft_candidates.append((
-            "https://note.com/api/v1/text_notes",
-            {"name": title, bf: content, "hashtag_notes_attributes": tag_list,
-             "price": price, "is_paid_only_body": False},
-        ))
+    d1 = r1.json().get("data", r1.json())
+    note_id  = str(d1.get("id") or "")
+    note_key = str(d1.get("key") or note_id)
+    if not note_id:
+        return {"success": False, "reason": f"Step1: note_id not found in {r1.text[:200]}"}
+    print(f"[NoteAPI] note_id={note_id} note_key={note_key}")
 
-    note_key = ""
-    note_id = ""
+    # ── Step 2: 本文・タイトルを下書き保存 ──
+    r2 = session.post(
+        f"https://note.com/api/v1/draft_save?id={note_id}&is_temp_saved=true",
+        json={
+            "name": title,
+            "free_body": free_body,
+            "body_length": len(content),
+            "index": False,
+            "is_lead_form": False,
+        },
+        timeout=30,
+    )
+    print(f"[NoteAPI] Step2 下書き保存: {r2.status_code} {r2.text[:150]}")
+    if r2.status_code not in (200, 201):
+        return {"success": False, "reason": f"Step2 failed: {r2.status_code}"}
 
-    for endpoint, payload in draft_candidates:
-        try:
-            r = session.post(endpoint, json=payload, timeout=30)
-            print(f"[NoteAPI] 下書き作成試行 {endpoint.split('/')[-2]}/{endpoint.split('/')[-1]}: {r.status_code} {r.text[:200]}")
-            if r.status_code in (200, 201):
-                data = r.json()
-                d = data.get("data", data)
-                note_key = str(d.get("key") or d.get("id") or "")
-                note_id  = str(d.get("id") or "")
-                status = d.get("status") or d.get("publishStatus") or ""
-                # 一発公開成功
-                if note_key and status in ("public", "published"):
-                    note_url = (
-                        d.get("noteUrl") or d.get("url") or
-                        f"https://note.com/{user_key}/n/{note_key}"
-                    )
-                    print(f"[NoteAPI] 一発公開成功: {note_url}")
-                    return {"success": True, "url": note_url, "title": title, "is_draft": False}
-                if note_key:
-                    print(f"[NoteAPI] 下書き作成成功: key={note_key} id={note_id} status={status!r} name={d.get('name')!r}")
-                    break
-        except Exception as e:
-            print(f"[NoteAPI] 下書き作成エラー {endpoint.split('/')[-1]}: {e}")
+    # ── Step 3: PUT で公開 ──
+    publish_payload = {
+        "name": title,
+        "free_body": free_body,
+        "pay_body": "",
+        "price": price,
+        "hashtags": [t for t in hashtags[:10]],
+        "body_length": len(content),
+        "index": False,
+        "is_refund": False,
+        "limited": False,
+        "send_notifications_flag": True,
+        "separator": None,
+        "author_ids": [],
+        "circle_permissions": [],
+        "disable_comment": False,
+        "discount_campaigns": [],
+        "exclude_ai_learning_reward": False,
+        "exclude_from_creator_top": False,
+        "image_keys": [],
+        "magazine_ids": [],
+        "magazine_keys": [],
+        "lead_form": {"is_active": False, "consent_url": ""},
+        "line_add_friend": {"is_active": False, "keyword": "", "add_friend_url": ""},
+    }
+    r3 = session.put(
+        f"https://note.com/api/v1/text_notes/{note_id}",
+        json=publish_payload,
+        timeout=30,
+    )
+    print(f"[NoteAPI] Step3 公開(PUT): {r3.status_code} {r3.text[:200]}")
+    if r3.status_code in (200, 201):
+        d3 = r3.json().get("data", r3.json())
+        note_url = (
+            d3.get("noteUrl") or d3.get("url") or
+            f"https://note.com/{user_key}/n/{note_key}"
+        )
+        print(f"[NoteAPI] 投稿成功: {note_url}")
+        return {"success": True, "url": note_url, "title": title, "is_draft": False}
 
-    if not note_key:
-        return {"success": False, "reason": "全エンドポイントで下書き作成失敗"}
-
-    # PUT /api/v1/text_notes/{id} で status 更新
-    # 本文フィールド名 × status 値を総当たり
-    if note_id:
-        put_payloads = []
-        for bf in body_fields:
-            for st in ("published", "public"):
-                put_payloads.append(
-                    {"name": title, bf: content, "hashtag_notes_attributes": tag_list,
-                     "price": price, "is_paid_only_body": False, "status": st}
-                )
-        for body in put_payloads:
-            try:
-                r = session.put(f"https://note.com/api/v1/text_notes/{note_id}", json=body, timeout=30)
-                bf_used = [k for k in body if k in body_fields]
-                print(f"[NoteAPI] PUT公開試行 {note_id} body_field={bf_used} status={body.get('status')!r}: {r.status_code} {r.text[:150]}")
-                if r.status_code in (200, 201):
-                    d2 = r.json().get("data", r.json())
-                    note_url = (
-                        d2.get("noteUrl") or d2.get("url") or
-                        f"https://note.com/{user_key}/n/{note_key}"
-                    )
-                    print(f"[NoteAPI] 投稿成功(PUT): {note_url}")
-                    return {"success": True, "url": note_url, "title": title, "is_draft": False}
-            except Exception as e:
-                print(f"[NoteAPI] PUT公開エラー: {e}")
-
-    # フォールバック: POST /publish
-    keys_to_try = list(dict.fromkeys(filter(None, [note_key, note_id])))
-    for k in keys_to_try:
-        for ep in [
-            f"https://note.com/api/v2/notes/{k}/publish",
-            f"https://note.com/api/v1/notes/{k}/publish",
-            f"https://note.com/api/v2/text_notes/{k}/publish",
-            f"https://note.com/api/v1/text_notes/{k}/publish",
-        ]:
-            try:
-                r = session.post(ep, json={"visibility": "public"}, timeout=15)
-                print(f"[NoteAPI] POST公開試行 {'/'.join(ep.split('/')[-2:])}: {r.status_code} {r.text[:100]}")
-                if r.status_code in (200, 201):
-                    d2 = r.json().get("data", r.json())
-                    note_url = d2.get("noteUrl") or d2.get("url") or f"https://note.com/{user_key}/n/{note_key}"
-                    print(f"[NoteAPI] 投稿成功(POST): {note_url}")
-                    return {"success": True, "url": note_url, "title": title, "is_draft": False}
-            except Exception as e:
-                print(f"[NoteAPI] POST公開エラー: {e}")
-
-    return {"success": False, "reason": f"全エンドポイントで公開失敗 note_key={note_key} note_id={note_id}"}
+    return {"success": False, "reason": f"Step3 PUT failed: {r3.status_code} {r3.text[:300]}"}
 
 
 # ==================== 方法1: セッションクッキーで直接API投稿（最優先） ====================
