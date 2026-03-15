@@ -275,13 +275,25 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
     if r2.status_code not in (200, 201):
         return {"success": False, "reason": f"Step2 failed: {r2.status_code}"}
 
-    # ── Step 3: PUT で公開 ──
+    # Step1/2 のレスポンスから XSRF-TOKEN を取得して PUT に付ける
+    xsrf_token = ""
+    for c in session.cookies:
+        if c.name.upper() in ("XSRF-TOKEN", "X-XSRF-TOKEN", "CSRF-TOKEN", "_XSRF"):
+            xsrf_token = c.value
+            break
+    if xsrf_token:
+        session.headers["X-XSRF-TOKEN"] = xsrf_token
+        print(f"[NoteAPI] XSRF-TOKEN取得: {xsrf_token[:16]}...")
+    else:
+        print("[NoteAPI] XSRF-TOKEN なし（CSRFなしで PUT 試行）")
+
+    # ── Step 3: PUT で公開（ブラウザ実測ペイロードに準拠） ──
     publish_payload = {
         "name": title,
         "free_body": free_body,
         "pay_body": "",
         "price": price,
-        "hashtags": [t for t in hashtags[:10]],
+        "hashtags": [t for t in hashtags[:10]],  # 文字列配列
         "body_length": len(content),
         "index": False,
         "is_refund": False,
@@ -299,6 +311,7 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
         "magazine_keys": [],
         "lead_form": {"is_active": False, "consent_url": ""},
         "line_add_friend": {"is_active": False, "keyword": "", "add_friend_url": ""},
+        "line_add_friend_access_token": "",
     }
     r3 = session.put(
         f"https://note.com/api/v1/text_notes/{note_id}",
