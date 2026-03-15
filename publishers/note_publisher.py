@@ -61,12 +61,18 @@ def _retry_pending_drafts(email: str, password: str) -> int:
     updated = False
 
     for item in pipeline:
-        if item.get("status") != "pending":
+        if item.get("status") not in ("pending", "give_up"):
             continue
-        if item.get("retry_count", 0) >= 5:
-            item["status"] = "give_up"
+        if item.get("retry_count", 0) >= 10:
+            # 10回超えたら完全諦め（以前は5回だったが延長）
+            if item.get("status") != "give_up":
+                item["status"] = "give_up"
+                updated = True
+            continue
+        # give_up → pending に復活させて再試行（ログイン修正後のリカバリー用）
+        if item.get("status") == "give_up" and item.get("retry_count", 0) < 10:
+            item["status"] = "pending"
             updated = True
-            continue
 
         draft_path = item.get("draft_path", "")
         if not os.path.exists(draft_path):
@@ -236,44 +242,84 @@ def api_post(article: dict, email: str, password: str) -> dict:
 
     try:
         import re as _re
+        import json as _json
         # ========== ログイン ==========
-        # CSRFトークン取得（SPAのため meta タグ・JS変数・Cookieを複数手段で試みる）
+        # まずルートページを訪問してセッション・Cookieを初期化（Next.js SPA対応）
+        session.get("https://note.com/", timeout=15)
+
+        # CSRFトークン取得（SPAのため複数手段で試みる）
         login_page = session.get("https://note.com/login", timeout=15)
         csrf_token = ""
+
+        # Method 1: <meta name="csrf-token"> タグ（従来型Rails）
         for line in login_page.text.splitlines():
             if 'csrf-token' in line and 'content=' in line:
                 m = _re.search(r'content="([^"]+)"', line)
                 if m:
                     csrf_token = m.group(1)
                     break
-        # CookieからCSRFを取得（SPAパターン）
+
+        # Method 2: __NEXT_DATA__ JSONからCSRFを取得（Next.js SPA）
+        if not csrf_token:
+            nd_match = _re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', login_page.text, _re.DOTALL)
+            if nd_match:
+                try:
+                    nd = _json.loads(nd_match.group(1))
+                    csrf_token = (
+                        nd.get("props", {}).get("csrfToken") or
+                        nd.get("props", {}).get("pageProps", {}).get("csrfToken") or
+                        nd.get("query", {}).get("csrfToken") or ""
+                    )
+                except Exception:
+                    pass
+
+        # Method 3: CookieからCSRFを取得（XSRF-TOKEN等）
         if not csrf_token:
             for c in session.cookies:
-                if "csrf" in c.name.lower() or "token" in c.name.lower():
+                if "csrf" in c.name.lower() or "xsrf" in c.name.lower():
                     csrf_token = c.value
                     break
 
-        session.headers.update({"X-CSRF-Token": csrf_token})
+        # Method 4: Cookieにtokenが含まれる場合（広めに探す）
+        if not csrf_token:
+            for c in session.cookies:
+                if "token" in c.name.lower() and len(c.value) > 10:
+                    csrf_token = c.value
+                    break
 
-        # ログインAPI（フィールド名を複数試みる）
+        if csrf_token:
+            session.headers.update({"X-CSRF-Token": csrf_token, "X-XSRF-TOKEN": csrf_token})
+        print(f"[NoteAPI] CSRFトークン: {'取得済み' if csrf_token else '未取得'} ({csrf_token[:20] if csrf_token else ''})")
+
+        # ログインAPI（エンドポイント × ペイロード形式を総当たり）
         login_resp = None
-        for login_payload in [
+        login_endpoints = [
+            "https://note.com/api/v1/sessions",          # 元々動いていたエンドポイント（/sign_inなし）
+            "https://note.com/api/v1/sessions/sign_in",  # 3月14日から試みているエンドポイント
+            "https://note.com/api/v2/sessions/sign_in",
+            "https://note.com/api/v1/users/sign_in",
+        ]
+        login_payloads = [
+            {"user": {"email": email, "password": password}},   # Devise標準形式
             {"email_or_nickname": email, "password": password},
             {"login": email, "password": password},
             {"email": email, "password": password},
-        ]:
-            r = session.post(
-                "https://note.com/api/v1/sessions/sign_in",
-                json=login_payload,
-                timeout=15
-            )
-            print(f"[NoteAPI] ログイン試行 payload={list(login_payload.keys())[0]}: {r.status_code}")
-            if r.status_code in (200, 201):
+        ]
+        logged_in = False
+        for endpoint in login_endpoints:
+            for login_payload in login_payloads:
+                r = session.post(endpoint, json=login_payload, timeout=15)
+                key = list(login_payload.keys())[0]
+                print(f"[NoteAPI] ログイン試行 endpoint={endpoint.split('/')[-2]+'/'+endpoint.split('/')[-1]} payload={key}: {r.status_code}")
+                if r.status_code in (200, 201):
+                    login_resp = r
+                    logged_in = True
+                    break
                 login_resp = r
+            if logged_in:
                 break
-            login_resp = r  # 最後の結果を保持
 
-        if login_resp.status_code not in (200, 201):
+        if not logged_in or login_resp.status_code not in (200, 201):
             print(f"[NoteAPI] ログイン失敗: {login_resp.status_code} body={login_resp.text[:200]}")
             return {"success": False, "reason": f"login failed: {login_resp.status_code}"}
 
@@ -282,10 +328,16 @@ def api_post(article: dict, email: str, password: str) -> dict:
             err_msg = login_data["error"].get("message", str(login_data["error"]))
             print(f"[NoteAPI] ログイン失敗: {err_msg}")
             return {"success": False, "reason": f"login error: {err_msg}"}
-        user_key = login_data.get("data", {}).get("urlname", "")
+        # urlname または id で識別（APIバージョンによって異なる）
+        user_key = (
+            login_data.get("data", {}).get("urlname") or
+            login_data.get("data", {}).get("id") or
+            login_data.get("data", {}).get("user", {}).get("urlname") or
+            ""
+        )
         if not user_key:
-            print(f"[NoteAPI] ログイン失敗: urlname取得できず。レスポンス={str(login_data)[:200]}")
-            return {"success": False, "reason": "login failed: no urlname"}
+            print(f"[NoteAPI] ログイン失敗: user_key取得できず。レスポンス={str(login_data)[:200]}")
+            return {"success": False, "reason": "login failed: no user_key"}
         print(f"[NoteAPI] ログイン成功: {user_key}")
 
         # CSRFトークン更新（ログイン後に変わる場合あり）
