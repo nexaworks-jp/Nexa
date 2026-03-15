@@ -261,7 +261,7 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
 
     # ── Step 2: 本文・タイトルを下書き保存 ──
     r2 = session.post(
-        f"https://note.com/api/v1/draft_save?id={note_id}&is_temp_saved=true",
+        f"https://note.com/api/v1/text_notes/draft_save?id={note_id}&is_temp_saved=true",
         json={
             "name": title,
             "free_body": free_body,
