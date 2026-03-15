@@ -440,14 +440,24 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
 
         try:
             # ========== 認証 ==========
+            editor_sel = '[contenteditable="true"]'
+
             if cookies:
                 # クッキーがある場合: 直接投稿ページへ
                 page.goto("https://note.com/notes/new", timeout=30000)
                 page.wait_for_load_state("networkidle", timeout=20000)
 
                 if "/login" in page.url:
-                    print("[NotePublisher] クッキー期限切れ → フォームログインにフォールバック")
-                    cookies = []  # フォールバックフラグ
+                    print("[NotePublisher] クッキー期限切れ (URL) → フォームログインへ")
+                    cookies = []
+                else:
+                    # URLチェックだけでは不十分 - エディターが実際に出るか確認
+                    try:
+                        page.wait_for_selector(editor_sel, state='visible', timeout=12000)
+                        print("[NotePublisher] クッキー認証成功 + エディター確認OK")
+                    except Exception:
+                        print("[NotePublisher] クッキー無効（エディター未ロード）→ フォームログインへ")
+                        cookies = []
 
             if not cookies:
                 # フォームログイン
@@ -476,20 +486,21 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
 
                 page.goto("https://note.com/notes/new", timeout=30000)
                 page.wait_for_load_state("networkidle", timeout=20000)
-            else:
-                print("[NotePublisher] クッキー認証成功")
+                # フォームログイン後もエディター出現を待機
+                try:
+                    page.wait_for_selector(editor_sel, state='visible', timeout=30000)
+                    print("[NotePublisher] フォームログイン後エディター確認OK")
+                except Exception:
+                    print("[NotePublisher] フォームログイン後もエディター未ロード → 続行")
 
-            # ========== エディター読み込み待機 ==========
-            # networkidleだけではNext.js SPAのJS初期化が終わっていないケースがある
-            # contenteditable要素が出現するまで明示的に待機する
+            # ========== 投稿ページ確認 ==========
             if "notes/new" not in page.url:
                 page.goto("https://note.com/notes/new", timeout=30000)
                 page.wait_for_load_state("networkidle", timeout=20000)
-            try:
-                page.wait_for_selector('[contenteditable="true"]', state='visible', timeout=45000)
-                print("[NotePublisher] エディター読み込み完了")
-            except Exception:
-                print("[NotePublisher] エディター待機タイムアウト → 続行")
+                try:
+                    page.wait_for_selector(editor_sel, state='visible', timeout=20000)
+                except Exception:
+                    pass
             page.wait_for_timeout(2000)
 
             # ========== タイトル入力 ==========
