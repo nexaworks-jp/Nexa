@@ -448,16 +448,24 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
                 page.wait_for_load_state("networkidle", timeout=20000)
 
                 if "/login" in page.url:
-                    print("[NotePublisher] クッキー期限切れ (URL) → フォームログインへ")
+                    # URLが/loginに変わった場合のみフォームログインへ
+                    print("[NotePublisher] クッキー期限切れ (URLリダイレクト) → フォームログインへ")
                     cookies = []
                 else:
-                    # URLチェックだけでは不十分 - エディターが実際に出るか確認
+                    # エディター読み込みを40秒待機（note.com SPA は初回ロードに時間がかかる）
                     try:
-                        page.wait_for_selector(editor_sel, state='visible', timeout=12000)
+                        page.wait_for_selector(editor_sel, state='visible', timeout=40000)
                         print("[NotePublisher] クッキー認証成功 + エディター確認OK")
                     except Exception:
-                        print("[NotePublisher] クッキー無効（エディター未ロード）→ フォームログインへ")
-                        cookies = []
+                        # まだ出ない場合はリロードして再試行
+                        print("[NotePublisher] エディター未ロード → ページリロードして再試行")
+                        page.reload()
+                        page.wait_for_load_state("networkidle", timeout=20000)
+                        try:
+                            page.wait_for_selector(editor_sel, state='visible', timeout=30000)
+                            print("[NotePublisher] リロード後エディター確認OK")
+                        except Exception:
+                            print("[NotePublisher] リロード後もエディター未ロード → 続行")
 
             if not cookies:
                 # フォームログイン
