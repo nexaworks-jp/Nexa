@@ -1,35 +1,50 @@
 {
-  "current_focus": "crowdworks",
+  "current_focus": "crowdworks, content, saas",
   "reasoning": "ルールベース判断",
   "week_goals": {
     "note_articles": 14,
     "x_posts": 56
   },
   "performance_notes": [],
-  "last_updated": "2026-03-14T22:17:42.247731",
-  "iteration": 29,
-  "primary_niche": "進化心理学",
+  "last_updated": "2026-03-15T05:36:57.409393",
+  "iteration": 30,
+  "primary_niche": "AI・自動化・SaaS関連の情報発信と受託業務",
   "content_themes": [
-    "サピエンスの承認欲求と現代SNS",
-    "嫉妬・怒り・嫌悪の進化的起源",
-    "恋愛と配偶戦略の進化心理学",
-    "孤独・孤立が怖い本当の理由",
-    "集団・地位・権力の霊長類的起源",
-    "羞恥心と赤面の生物学的意味",
-    "現代のうつ・不安は進化のミスマッチである"
+    "AI時代のビジネス思考法",
+    "自動化による効率化事例",
+    "SaaS選定・導入ガイド",
+    "個人事業主向けAIツール活用"
   ],
   "proposal_keywords": [
-    "AI副業",
-    "クラウドワークス攻略",
-    "ChatGPT活用",
-    "自動提案システム",
-    "高単価案件獲得"
+    "AI自動化",
+    "SaaS導入",
+    "効率化",
+    "AI×個人ビジネス",
+    "プロンプト設計"
   ],
-  "target_budget_min": 10000,
+  "target_budget_min": 5000,
   "intensify_channels": [
     "crowdworks",
-    "note",
-    "booth"
+    "content"
   ],
-  "auto_updated_at": "2026-03-11T19:08:49.765009"
+  "auto_updated_at": "2026-03-15T05:37:15.341737",
+  "api_schedule": {
+    "content_hour_utc": 21,
+    "improve_hour_utc": 13,
+    "saas_weekdays": [
+      0
+    ],
+    "startup_notify": false,
+    "schedule_reason": "収益ゼロのため現行維持。成果が出次第頻度を上げる"
+  },
+  "note_pricing": {
+    "note_article_price": 0,
+    "note_paid_ratio": 0.0,
+    "pricing_reason": "集客フェーズ。PV=0のため無料継続し認知獲得を優先"
+  },
+  "x_strategy": {
+    "funnel_ratio": 0.0,
+    "dominant_style": "insight",
+    "strategy_reason": "初期段階。導線なし情報発信で信頼構築を最優先"
+  }
 }

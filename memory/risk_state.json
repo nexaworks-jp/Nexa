@@ -1,15 +1,27 @@
 {
   "api_cost_today_usd": 0.0,
   "api_cost_month_usd": 0.0,
-  "proposals_today": 3,
-  "date": "2026-03-14",
+  "proposals_today": 0,
+  "date": "2026-03-15",
   "month": "2026-03",
   "consecutive_errors": {
+    "note": 1,
     "crowdworks": 0,
-    "note": 0
+    "saas": 1
   },
   "paused_modules": {},
-  "total_runs": 29,
-  "last_run": "2026-03-14T22:17:22.531458",
-  "error_log": []
+  "total_runs": 30,
+  "last_run": "2026-03-15T05:28:03.172168",
+  "error_log": [
+    {
+      "module": "note",
+      "error": "BrowserType.launch: Executable doesn't exist at /home/runner/.cache/ms-playwright/chromium_headless_shell-1208/chrome-headless-shell-linux64/chrome-headless-shell\n╔════════════════════════════════════",
+      "at": "2026-03-15T05:36:22.024936"
+    },
+    {
+      "module": "saas",
+      "error": "Extra data: line 6 column 1 (char 354)",
+      "at": "2026-03-15T05:36:55.074346"
+    }
+  ]
 }
