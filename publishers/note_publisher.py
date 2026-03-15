@@ -479,10 +479,17 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
             else:
                 print("[NotePublisher] クッキー認証成功")
 
-            # ========== 新規記事作成（投稿ページでなければ移動） ==========
+            # ========== エディター読み込み待機 ==========
+            # networkidleだけではNext.js SPAのJS初期化が終わっていないケースがある
+            # contenteditable要素が出現するまで明示的に待機する
             if "notes/new" not in page.url:
                 page.goto("https://note.com/notes/new", timeout=30000)
                 page.wait_for_load_state("networkidle", timeout=20000)
+            try:
+                page.wait_for_selector('[contenteditable="true"]', state='visible', timeout=45000)
+                print("[NotePublisher] エディター読み込み完了")
+            except Exception:
+                print("[NotePublisher] エディター待機タイムアウト → 続行")
             page.wait_for_timeout(2000)
 
             # ========== タイトル入力 ==========
@@ -567,34 +574,42 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
                 page.keyboard.type(content[:3000], delay=5)
                 print("[NotePublisher] 本文入力完了 (keyboard fallback)")
 
-            page.wait_for_timeout(2000)
+            # 入力後に再度エディターが安定するまで待機
+            page.wait_for_timeout(3000)
 
             # ========== 公開ボタンクリック ==========
             # 公開ボタン前にスクリーンショット（デバッグ用）
             _save_debug_screenshot(page, prefix="before_publish")
 
-            # ページ上のボタンを全てログ出力（デバッグ）
+            # ページ上のボタン・クリッカブル要素を全てログ出力（デバッグ）
             try:
                 btns = page.evaluate("""() => {
-                    return Array.from(document.querySelectorAll('button')).map(b => ({
+                    const els = Array.from(document.querySelectorAll('button, [role="button"], a[href="#"]'));
+                    return els.map(b => ({
+                        tag: b.tagName,
                         text: b.innerText.trim().slice(0, 30),
                         cls: b.className.slice(0, 60),
-                        disabled: b.disabled
+                        disabled: b.disabled || false
                     }));
                 }""")
-                print(f"[NotePublisher] ページ上のボタン: {btns[:10]}")
+                print(f"[NotePublisher] クリッカブル要素: {btns[:15]}")
             except Exception:
                 pass
 
             publish_btn_selectors = [
                 'button:has-text("公開する")',
                 'button:has-text("投稿する")',
+                'button:has-text("公開設定")',
                 'button:has-text("公開")',
+                '[role="button"]:has-text("公開する")',
+                '[role="button"]:has-text("公開")',
+                '[role="button"]:has-text("投稿")',
                 'button:has-text("Publish")',
                 '[class*="publish"]:has-text("公開")',
-                '[class*="submit"]',
                 '[data-testid*="publish"]',
+                '[data-testid*="submit"]',
                 'header button:last-child',
+                'header [role="button"]:last-child',
             ]
             publish_clicked = False
             for sel in publish_btn_selectors:
