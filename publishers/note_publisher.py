@@ -216,6 +216,78 @@ created_at: {article.get('created_at', '')}
     }
 
 
+# ==================== 下書き作成・公開の共通ヘルパー ====================
+
+def _create_and_publish(session, title: str, content: str, hashtags: list, price: int, user_key: str) -> dict:
+    """
+    下書き作成 → 公開 を複数エンドポイントで総当たり試行。
+    ログイン方法に関わらず共通で使用。
+    """
+    tag_list = [{"name": t} for t in hashtags[:10]]
+
+    # 下書き作成エンドポイントの候補（実績順）
+    draft_candidates = [
+        # エンドポイント, ペイロード
+        ("https://note.com/api/v1/text_notes",
+         {"title": title, "body": content, "hashtag_notes_attributes": tag_list, "price": price, "is_paid_only_body": False}),
+        ("https://note.com/api/v2/text_notes",
+         {"title": title, "body": content, "hashtag_notes_attributes": tag_list, "price": price, "is_paid_only_body": False}),
+        ("https://note.com/api/v3/text_notes",
+         {"title": title, "body": content, "hashtag_notes_attributes": tag_list, "price": price, "is_paid_only_body": False}),
+        ("https://note.com/api/v1/notes",
+         {"title": title, "body": content, "hashtag_notes_attributes": tag_list, "price": price, "kind": "text"}),
+        ("https://note.com/api/v3/drafts",
+         {"title": title, "body": content, "hashtag_notes_attributes": tag_list, "price": price, "is_paid_only_body": False}),
+    ]
+
+    note_key = ""
+    for endpoint, payload in draft_candidates:
+        try:
+            r = session.post(endpoint, json=payload, timeout=30)
+            print(f"[NoteAPI] 下書き作成試行 {endpoint.split('/')[-2]}/{endpoint.split('/')[-1]}: {r.status_code} {r.text[:100]}")
+            if r.status_code in (200, 201):
+                data = r.json()
+                note_key = (
+                    data.get("data", {}).get("key") or
+                    data.get("data", {}).get("id") or
+                    data.get("key") or
+                    data.get("id") or ""
+                )
+                if note_key:
+                    print(f"[NoteAPI] 下書き作成成功: endpoint={endpoint.split('/')[-1]} key={note_key}")
+                    break
+        except Exception as e:
+            print(f"[NoteAPI] 下書き作成エラー {endpoint.split('/')[-1]}: {e}")
+
+    if not note_key:
+        return {"success": False, "reason": "全エンドポイントで下書き作成失敗"}
+
+    # 公開エンドポイントの候補
+    publish_candidates = [
+        f"https://note.com/api/v2/notes/{note_key}/publish",
+        f"https://note.com/api/v1/notes/{note_key}/publish",
+        f"https://note.com/api/v3/notes/{note_key}/publish",
+        f"https://note.com/api/v2/text_notes/{note_key}/publish",
+        f"https://note.com/api/v1/text_notes/{note_key}/publish",
+    ]
+    for endpoint in publish_candidates:
+        try:
+            r = session.post(endpoint, json={"visibility": "public"}, timeout=15)
+            print(f"[NoteAPI] 公開試行 {endpoint.split('/')[-2]}/{endpoint.split('/')[-1]}: {r.status_code} {r.text[:100]}")
+            if r.status_code in (200, 201):
+                note_url = (
+                    r.json().get("data", {}).get("noteUrl") or
+                    r.json().get("data", {}).get("url") or
+                    f"https://note.com/{user_key}/n/{note_key}"
+                )
+                print(f"[NoteAPI] 投稿成功: {note_url}")
+                return {"success": True, "url": note_url, "title": title, "is_draft": False}
+        except Exception as e:
+            print(f"[NoteAPI] 公開エラー: {e}")
+
+    return {"success": False, "reason": f"全エンドポイントで公開失敗 note_key={note_key}"}
+
+
 # ==================== 方法1: セッションクッキーで直接API投稿（最優先） ====================
 
 def api_post_with_session_cookie(article: dict) -> dict:
@@ -286,52 +358,7 @@ def api_post_with_session_cookie(article: dict) -> dict:
 
         print(f"[NoteAPI-Session] CSRF={'あり' if csrf_token else 'なし'} user={user_key or '不明'} session={session_cookie['value'][:8]}...")
 
-        # ========== 下書き作成 ==========
-        tag_list = [{"name": t} for t in hashtags[:10]]
-        draft_resp = session.post(
-            "https://note.com/api/v3/drafts",
-            json={
-                "title": title,
-                "body": content,
-                "hashtag_notes_attributes": tag_list,
-                "price": price,
-                "is_paid_only_body": False,
-            },
-            timeout=30
-        )
-        print(f"[NoteAPI-Session] 下書き作成: {draft_resp.status_code} body={draft_resp.text[:150]}")
-
-        if draft_resp.status_code not in (200, 201):
-            return {"success": False, "reason": f"draft {draft_resp.status_code}: {draft_resp.text[:200]}"}
-
-        draft_data = draft_resp.json()
-        note_key = (
-            draft_data.get("data", {}).get("key") or
-            draft_data.get("key") or ""
-        )
-        if not note_key:
-            return {"success": False, "reason": f"note_key not found: {str(draft_data)[:200]}"}
-
-        print(f"[NoteAPI-Session] 下書き作成成功: key={note_key}")
-
-        # ========== 公開 ==========
-        pub_resp = session.post(
-            f"https://note.com/api/v2/notes/{note_key}/publish",
-            json={"visibility": "public"},
-            timeout=15
-        )
-        print(f"[NoteAPI-Session] 公開: {pub_resp.status_code} body={pub_resp.text[:150]}")
-
-        if pub_resp.status_code not in (200, 201):
-            return {"success": False, "reason": f"publish {pub_resp.status_code}: {pub_resp.text[:200]}"}
-
-        pub_data = pub_resp.json()
-        note_url = (
-            pub_data.get("data", {}).get("noteUrl") or
-            f"https://note.com/{user_key}/n/{note_key}"
-        )
-        print(f"[NoteAPI-Session] 投稿成功: {note_url}")
-        return {"success": True, "url": note_url, "title": title, "is_draft": False}
+        return _create_and_publish(session, title, content, hashtags, price, user_key)
 
     except Exception as e:
         print(f"[NoteAPI-Session] エラー: {e}")
@@ -443,40 +470,7 @@ def api_post(article: dict, email: str, password: str) -> dict:
             if "csrf" in c.name.lower() or "xsrf" in c.name.lower():
                 session.headers["X-CSRF-Token"] = c.value
 
-        # 下書き作成
-        tag_list = [{"name": t} for t in hashtags[:10]]
-        draft_resp = session.post(
-            "https://note.com/api/v3/drafts",
-            json={
-                "title": title,
-                "body": content,
-                "hashtag_notes_attributes": tag_list,
-                "price": price,
-                "is_paid_only_body": False,
-            },
-            timeout=30
-        )
-        if draft_resp.status_code not in (200, 201):
-            print(f"[NoteAPI] 下書き作成失敗: {draft_resp.status_code} {draft_resp.text[:200]}")
-            return {"success": False, "reason": f"draft failed: {draft_resp.status_code}"}
-
-        draft_data = draft_resp.json()
-        note_key = draft_data.get("data", {}).get("key") or draft_data.get("key", "")
-        print(f"[NoteAPI] 下書き作成成功: key={note_key}")
-
-        # 公開
-        pub_resp = session.post(
-            f"https://note.com/api/v2/notes/{note_key}/publish",
-            json={"visibility": "public"},
-            timeout=15
-        )
-        if pub_resp.status_code not in (200, 201):
-            print(f"[NoteAPI] 公開失敗: {pub_resp.status_code} {pub_resp.text[:200]}")
-            return {"success": False, "reason": f"publish failed: {pub_resp.status_code}"}
-
-        note_url = pub_resp.json().get("data", {}).get("noteUrl") or f"https://note.com/{user_key}/n/{note_key}"
-        print(f"[NoteAPI] 投稿成功: {note_url}")
-        return {"success": True, "url": note_url, "title": title, "is_draft": False}
+        return _create_and_publish(session, title, content, hashtags, price, user_key)
 
     except Exception as e:
         print(f"[NoteAPI] エラー: {e}")
