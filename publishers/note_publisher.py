@@ -282,49 +282,58 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
     if not note_key:
         return {"success": False, "reason": "全エンドポイントで下書き作成失敗"}
 
-    # 公開: key と id の両方 × POST/PATCH/PUT × v1/v2/v3 を試す
-    keys_to_try = list(dict.fromkeys(filter(None, [note_key, note_id])))
-    publish_candidates = []
-    for k in keys_to_try:
-        publish_candidates += [
-            ("POST",  f"https://note.com/api/v2/notes/{k}/publish"),
-            ("POST",  f"https://note.com/api/v1/notes/{k}/publish"),
-            ("POST",  f"https://note.com/api/v3/notes/{k}/publish"),
-            ("POST",  f"https://note.com/api/v2/text_notes/{k}/publish"),
-            ("POST",  f"https://note.com/api/v1/text_notes/{k}/publish"),
-            ("PATCH", f"https://note.com/api/v1/text_notes/{k}"),
-            ("PATCH", f"https://note.com/api/v2/text_notes/{k}"),
-            ("PUT",   f"https://note.com/api/v1/text_notes/{k}"),
+    # PUT /api/v1/text_notes/{数値id} が 422 を返した（405/404 でない）= エンドポイントは存在する
+    # → 全ペイロード（status=public含む）で送れば公開できるはず（最優先）
+    full_payload = {**base_payload, "status": "public"}
+
+    if note_id:
+        put_candidates = [
+            ("PUT", f"https://note.com/api/v1/text_notes/{note_id}", full_payload),
+            ("PUT", f"https://note.com/api/v2/text_notes/{note_id}", full_payload),
+            ("PUT", f"https://note.com/api/v1/text_notes/{note_id}", {**base_payload, "status": "published"}),
+            ("PUT", f"https://note.com/api/v1/text_notes/{note_id}", {**base_payload, "publish_status": "public"}),
         ]
-
-    publish_bodies = [
-        {"visibility": "public"},
-        {"status": "public"},
-        {"publish": True},
-        {},
-    ]
-
-    for method, endpoint in publish_candidates:
-        for body in publish_bodies:
+        if note_key and note_key != note_id:
+            put_candidates += [
+                ("PUT", f"https://note.com/api/v1/text_notes/{note_key}", full_payload),
+            ]
+        for method, endpoint, body in put_candidates:
             try:
-                fn = getattr(session, method.lower())
-                r = fn(endpoint, json=body, timeout=15)
+                r = session.put(endpoint, json=body, timeout=30)
                 label = f"{method} {'/'.join(endpoint.split('/')[-2:])}"
-                print(f"[NoteAPI] 公開試行 {label}: {r.status_code} {r.text[:100]}")
+                print(f"[NoteAPI] PUT公開試行 {label}: {r.status_code} {r.text[:150]}")
                 if r.status_code in (200, 201):
-                    rd = r.json()
-                    d2 = rd.get("data", rd)
+                    d2 = r.json().get("data", r.json())
                     note_url = (
                         d2.get("noteUrl") or d2.get("url") or
                         f"https://note.com/{user_key}/n/{note_key}"
                     )
-                    print(f"[NoteAPI] 投稿成功: {note_url}")
+                    print(f"[NoteAPI] 投稿成功(PUT): {note_url}")
                     return {"success": True, "url": note_url, "title": title, "is_draft": False}
             except Exception as e:
-                print(f"[NoteAPI] 公開エラー {method} {endpoint.split('/')[-1]}: {e}")
-            break  # このendpointで成功しなければ次のendpointへ
+                print(f"[NoteAPI] PUT公開エラー: {e}")
 
-    return {"success": False, "reason": f"全エンドポイントで公開失敗 note_key={note_key}"}
+    # フォールバック: POST /publish エンドポイント各種
+    keys_to_try = list(dict.fromkeys(filter(None, [note_key, note_id])))
+    for k in keys_to_try:
+        for ep in [
+            f"https://note.com/api/v2/notes/{k}/publish",
+            f"https://note.com/api/v1/notes/{k}/publish",
+            f"https://note.com/api/v2/text_notes/{k}/publish",
+            f"https://note.com/api/v1/text_notes/{k}/publish",
+        ]:
+            try:
+                r = session.post(ep, json={"visibility": "public"}, timeout=15)
+                print(f"[NoteAPI] POST公開試行 {'/'.join(ep.split('/')[-2:])}: {r.status_code} {r.text[:100]}")
+                if r.status_code in (200, 201):
+                    d2 = r.json().get("data", r.json())
+                    note_url = d2.get("noteUrl") or d2.get("url") or f"https://note.com/{user_key}/n/{note_key}"
+                    print(f"[NoteAPI] 投稿成功(POST): {note_url}")
+                    return {"success": True, "url": note_url, "title": title, "is_draft": False}
+            except Exception as e:
+                print(f"[NoteAPI] POST公開エラー: {e}")
+
+    return {"success": False, "reason": f"全エンドポイントで公開失敗 note_key={note_key} note_id={note_id}"}
 
 
 # ==================== 方法1: セッションクッキーで直接API投稿（最優先） ====================
