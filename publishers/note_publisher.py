@@ -401,6 +401,18 @@ def api_post_with_session_cookie(article: dict) -> dict:
 
         print(f"[NoteAPI-Session] CSRF={'あり' if csrf_token else 'なし'} user={user_key or '不明'} session={session_cookie['value'][:8]}...")
 
+        # editor.note.com にアクセスして note_gql_auth_token を取得
+        # ブラウザ実測: PUTリクエストに note_gql_auth_token が必要
+        editor_resp = session.get("https://editor.note.com/notes/new", timeout=15)
+        gql_token = next((c.value for c in session.cookies if c.name == "note_gql_auth_token"), "")
+        print(f"[NoteAPI-Session] note_gql_auth_token={'あり' if gql_token else 'なし'}")
+
+        # Origin/Referer を editor.note.com に変更（ブラウザ実測値に合わせる）
+        session.headers.update({
+            "Origin": "https://editor.note.com",
+            "Referer": "https://editor.note.com/",
+        })
+
         return _create_and_publish(session, title, content, hashtags, price, user_key)
 
     except Exception as e:
@@ -512,6 +524,15 @@ def api_post(article: dict, email: str, password: str) -> dict:
         for c in login_resp.cookies:
             if "csrf" in c.name.lower() or "xsrf" in c.name.lower():
                 session.headers["X-CSRF-Token"] = c.value
+
+        # editor.note.com にアクセスして note_gql_auth_token を取得
+        session.get("https://editor.note.com/notes/new", timeout=15)
+        gql_token = next((c.value for c in session.cookies if c.name == "note_gql_auth_token"), "")
+        print(f"[NoteAPI] note_gql_auth_token={'あり' if gql_token else 'なし'}")
+        session.headers.update({
+            "Origin": "https://editor.note.com",
+            "Referer": "https://editor.note.com/",
+        })
 
         return _create_and_publish(session, title, content, hashtags, price, user_key)
 
