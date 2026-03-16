@@ -1003,7 +1003,8 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
                 page.keyboard.type(content, delay=2)
                 print("[NotePublisher] 本文入力完了 (keyboard fallback)")
 
-            page.wait_for_timeout(3000)
+            # 本文が大きい場合ペースト処理に時間がかかるため長めに待機
+            page.wait_for_timeout(5000)
 
             # ========== 公開ボタン ==========
             _save_debug_screenshot(page, "before_publish")
@@ -1046,6 +1047,23 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
             # モーダルが完全に表示されるまで待つ（4秒）
             page.wait_for_timeout(4000)
             _save_debug_screenshot(page, "after_step1")
+
+            # モーダルが開いたか確認（「投稿する」または「キャンセル」が出現するはず）
+            modal_opened = page.evaluate("""() => {
+                const btns = Array.from(document.querySelectorAll('button, [role="button"]'));
+                return btns.some(b => b.innerText.trim() === '投稿する' || b.innerText.trim() === '公開する' || b.innerText.trim() === 'キャンセル');
+            }""")
+            if not modal_opened:
+                print("[NotePublisher] モーダル未表示 → 再クリックしてリトライ")
+                # 「公開に進む」を再度クリックしてリトライ
+                for sel in ['button:has-text("公開に進む")', 'header button:last-child']:
+                    try:
+                        page.locator(sel).first.click(timeout=5000)
+                        break
+                    except Exception:
+                        continue
+                page.wait_for_timeout(5000)
+                _save_debug_screenshot(page, "after_step1_retry")
 
             # ========== 公開設定モーダル ==========
             if price > 0:
@@ -1211,7 +1229,7 @@ def publish(config: dict, articles: list, dry_run: bool = False) -> list:
 
             # 3. Playwright
             if use_playwright:
-                wait = random.randint(0, 60)
+                wait = random.randint(60, 120)
                 print(f"[NotePublisher] {wait}秒待機後Playwright投稿")
                 time.sleep(wait)
                 result = auto_post_with_playwright(article, email, password)
