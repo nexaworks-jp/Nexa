@@ -124,6 +124,11 @@ def _last_posted_minutes_ago() -> float:
 
 def publish(config: dict, posts: list, dry_run: bool = False) -> list:
     """ポストリストを投稿する（1セッション最大2件・直近90分以内はスキップ）"""
+    # ── note自動投稿が安定するまで一時停止 ──
+    # note投稿が成功したらこの3行を削除して再開
+    print("[XPublisher] X投稿は一時停止中（note自動投稿修正完了後に再開）")
+    return []
+
     if not posts:
         return []
 
