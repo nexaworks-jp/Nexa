@@ -1020,31 +1020,32 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
             except Exception:
                 pass
 
-            publish_clicked = False
+            # ========== STEP1: 「公開に進む」ボタンをクリック ==========
+            # ※ "公開する" と "公開に進む" の両方に button:has-text("公開") がマッチするため
+            #    まず「公開に進む」だけに絞って押す
+            step1_clicked = False
             for sel in [
-                'button:has-text("公開する")',
-                'button:has-text("投稿する")',
+                'button:has-text("公開に進む")',
                 'button:has-text("公開設定")',
-                'button:has-text("公開")',
-                '[role="button"]:has-text("公開する")',
-                '[role="button"]:has-text("公開")',
-                '[data-testid*="publish"]',
+                '[role="button"]:has-text("公開に進む")',
                 'header button:last-child',
             ]:
                 try:
                     page.locator(sel).first.click(timeout=5000)
-                    publish_clicked = True
+                    step1_clicked = True
                     print(f"[NotePublisher] 公開ボタンクリック ({sel})")
                     break
                 except Exception:
                     continue
 
-            if not publish_clicked:
+            if not step1_clicked:
                 _save_debug_screenshot(page, "no_publish_btn")
                 browser.close()
                 return {"success": False, "reason": "publish button not found", "title": title}
 
-            page.wait_for_timeout(2000)
+            # モーダルが完全に表示されるまで待つ（4秒）
+            page.wait_for_timeout(4000)
+            _save_debug_screenshot(page, "after_step1")
 
             # ========== 公開設定モーダル ==========
             if price > 0:
@@ -1063,18 +1064,58 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
                 except Exception:
                     break
 
-            # 最終公開ボタン（モーダル内）
+            # ========== STEP2: モーダル内の「公開する」ボタンをクリック ==========
+            # ボタン一覧を再取得してデバッグ
+            try:
+                btns2 = page.evaluate("""() => {
+                    return Array.from(document.querySelectorAll('button, [role="button"]')).map(b => ({
+                        text: b.innerText.trim().slice(0, 40),
+                        cls: b.className.slice(0, 60),
+                    }));
+                }""")
+                print(f"[NotePublisher] モーダル後ボタン一覧: {btns2[:20]}")
+            except Exception:
+                pass
+
+            final_clicked = False
             for sel in [
                 'button:has-text("公開する")',
                 'button:has-text("投稿する")',
-                '[class*="modal"] button:has-text("公開")',
+                '[role="button"]:has-text("公開する")',
+                '[class*="publish"] button',
+                '[class*="modal"] button',
+                '[class*="drawer"] button',
+                '[class*="panel"] button:last-child',
             ]:
                 try:
-                    page.locator(sel).last.click(timeout=5000)
-                    print("[NotePublisher] 最終公開ボタンクリック")
-                    break
+                    loc = page.locator(sel)
+                    if loc.count() > 0:
+                        loc.last.click(timeout=5000)
+                        final_clicked = True
+                        print(f"[NotePublisher] 最終公開ボタンクリック ({sel})")
+                        break
                 except Exception:
                     continue
+
+            # セレクターで見つからない場合はJSで強制クリック
+            if not final_clicked:
+                try:
+                    js_clicked = page.evaluate("""() => {
+                        const btns = Array.from(document.querySelectorAll('button, [role="button"]'));
+                        const pub = btns.filter(b => b.innerText.trim() === '公開する' || b.innerText.trim() === '投稿する');
+                        if (pub.length > 0) { pub[pub.length - 1].click(); return pub[pub.length - 1].innerText.trim(); }
+                        return null;
+                    }""")
+                    if js_clicked:
+                        final_clicked = True
+                        print(f"[NotePublisher] 最終公開ボタンJS強制クリック: {js_clicked}")
+                except Exception:
+                    pass
+
+            if not final_clicked:
+                _save_debug_screenshot(page, "no_final_publish_btn")
+                browser.close()
+                return {"success": False, "reason": "final publish button not found (modal may not have appeared)", "title": title}
 
             # 公開後のリダイレクトを待つ（note.comへ遷移するまで最大10秒）
             for _ in range(10):

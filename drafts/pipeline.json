@@ -88,11 +88,9 @@
     ],
     "price": 0,
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_183318.md",
-    "status": "posted",
+    "status": "pending",
     "created_at": "2026-03-14T18:33:18.469951",
-    "retry_count": 1,
-    "posted_at": "2026-03-16T05:54:35.542182",
-    "url": "https://note.com/n/n3130c6705701"
+    "retry_count": 0
   },
   {
     "title": "AIツール選びで失敗しない｜自分に合ったサービスを見つける3つの判断基準",
