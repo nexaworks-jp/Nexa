@@ -98,21 +98,39 @@ def _retry_pending_drafts(email: str, password: str) -> int:
             with open(draft_path, "r", encoding="utf-8") as f:
                 md = f.read()
             lines = md.split("\n")
-            in_front = False
-            content_lines = []
-            skip_front = True
-            for line in lines:
-                if skip_front and line.strip() == "---":
-                    in_front = not in_front
-                    if not in_front:
-                        skip_front = False
-                    continue
-                if not skip_front:
-                    content_lines.append(line)
-            if content_lines and content_lines[0].startswith("# "):
-                content_lines = content_lines[1:]
-            sep = next((i for i, l in enumerate(content_lines) if l.strip() == "---"), len(content_lines))
-            body = "\n".join(content_lines[:sep]).strip()
+
+            # フロントマター（最初の --- ... --- ブロック）を除去
+            end_fm = 0
+            if lines and lines[0].strip() == "---":
+                for i in range(1, len(lines)):
+                    if lines[i].strip() == "---":
+                        end_fm = i + 1
+                        break
+            content_lines = lines[end_fm:]
+
+            # save_as_draft が付加したフッター（--- \n ※ ハッシュタグ: 以降）を除去
+            # 本文内の --- は水平線として許容し、フッターの --- のみで止める
+            sep = len(content_lines)
+            for i, l in enumerate(content_lines):
+                if l.strip() == "---":
+                    for j in range(i + 1, min(i + 4, len(content_lines))):
+                        nxt = content_lines[j].strip()
+                        if nxt.startswith("※ ハッシュタグ") or nxt.startswith("※ 価格設定") or nxt.startswith("## X導線ポスト"):
+                            sep = i
+                            break
+                    if sep < len(content_lines):
+                        break
+            content_lines = content_lines[:sep]
+
+            # 先頭の空行・重複タイトル行（# Title）を全て除去
+            title_line = f"# {item['title']}"
+            while content_lines and (content_lines[0].strip() == "" or content_lines[0].strip() == title_line):
+                content_lines.pop(0)
+
+            body = "\n".join(content_lines).strip()
+
+            # テンプレートマーカー（## リード など）を除去
+            body = _re.sub(r'^## リード\s*\n?', '', body, flags=_re.MULTILINE).strip()
         except Exception:
             item["retry_count"] = item.get("retry_count", 0) + 1
             updated = True
@@ -241,18 +259,55 @@ created_at: {article.get('created_at', '')}
 
 # ==================== 下書き作成・公開の共通ヘルパー ====================
 
+def _inline_md(text: str) -> str:
+    """インラインマークダウン（bold/italic/code）をHTMLに変換"""
+    text = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    text = _re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
+    text = _re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
+    text = _re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+    return text
+
+
 def _content_to_html(text: str) -> str:
-    """マークダウン本文をnote.com互換のHTML（<p>タグ）に変換"""
+    """マークダウン本文をnote.com互換HTMLに変換（見出し・太字・コードブロック対応）"""
     import html as _html
-    paragraphs = text.split("\n\n")
+    lines = text.split("\n")
     parts = []
-    for p in paragraphs:
-        p = p.strip()
-        if not p:
+    in_code = False
+    code_lang = ""
+    code_buf = []
+
+    for line in lines:
+        if line.startswith("```"):
+            if not in_code:
+                in_code = True
+                code_lang = line[3:].strip()
+                code_buf = []
+            else:
+                in_code = False
+                code_content = _html.escape("\n".join(code_buf))
+                parts.append(f"<pre><code>{code_content}</code></pre>")
+                code_buf = []
             continue
-        escaped = _html.escape(p).replace("\n", "<br>")
-        parts.append(f"<p>{escaped}</p>")
-    return "".join(parts) or "<p></p>"
+        if in_code:
+            code_buf.append(line)
+            continue
+
+        stripped = line.rstrip()
+        if stripped.startswith("### "):
+            parts.append(f"<h3>{_inline_md(_html.escape(stripped[4:]))}</h3>")
+        elif stripped.startswith("## "):
+            parts.append(f"<h2>{_inline_md(_html.escape(stripped[3:]))}</h2>")
+        elif stripped.startswith("# "):
+            parts.append(f"<h1>{_inline_md(_html.escape(stripped[2:]))}</h1>")
+        elif stripped == "---":
+            parts.append("<hr>")
+        elif stripped == "":
+            parts.append("")
+        else:
+            parts.append(f"<p>{_inline_md(_html.escape(stripped))}</p>")
+
+    return "\n".join(p for p in parts if p != "") or "<p></p>"
 
 
 def _session_to_pw_cookies(session) -> list:
@@ -846,40 +901,38 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
             page.wait_for_timeout(500)
 
             # ========== 本文入力 ==========
+            html_body = _content_to_html(content)
             body_filled = False
-            for sel in [
-                '.editor-body [contenteditable="true"]',
-                '[data-placeholder*="本文"]',
-                '.ProseMirror',
-                '[class*="editor-content"] [contenteditable]',
-            ]:
-                try:
-                    page.wait_for_selector(sel, timeout=3000)
-                    page.click(sel)
-                    page.evaluate("""(txt) => {
-                        const editors = document.querySelectorAll('[contenteditable="true"]');
-                        let bodyEditor = null;
-                        for (const ed of editors) {
-                            const rect = ed.getBoundingClientRect();
-                            if (rect.height > 100) { bodyEditor = ed; break; }
-                        }
-                        if (!bodyEditor) bodyEditor = editors[editors.length - 1];
-                        if (bodyEditor) {
-                            bodyEditor.focus();
-                            document.execCommand('selectAll', false, null);
-                            document.execCommand('insertText', false, txt);
-                        }
-                    }""", content)
-                    body_filled = True
-                    print("[NotePublisher] 本文入力完了")
-                    break
-                except Exception:
-                    continue
-
+            # HTML貼り付け → plain text insertText の順で試みる
+            body_filled = page.evaluate("""([htmlContent, textContent]) => {
+                const editors = document.querySelectorAll('[contenteditable="true"]');
+                let bodyEditor = null;
+                for (const ed of editors) {
+                    const rect = ed.getBoundingClientRect();
+                    if (rect.height > 100) { bodyEditor = ed; break; }
+                }
+                if (!bodyEditor) bodyEditor = editors[editors.length - 1];
+                if (!bodyEditor) return false;
+                bodyEditor.focus();
+                document.execCommand('selectAll', false, null);
+                // HTML DataTransfer paste（ProseMirrorはtext/htmlを処理する）
+                try {
+                    const dt = new DataTransfer();
+                    dt.setData('text/html', htmlContent);
+                    dt.setData('text/plain', textContent);
+                    const evt = new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true});
+                    bodyEditor.dispatchEvent(evt);
+                    return 'html_paste';
+                } catch(e) {}
+                // fallback: plain text
+                document.execCommand('insertText', false, textContent);
+                return 'plain_text';
+            }""", [html_body, content])
+            print(f"[NotePublisher] 本文入力完了 ({body_filled})")
             if not body_filled:
                 page.keyboard.press("Tab")
                 page.wait_for_timeout(500)
-                page.keyboard.type(content[:3000], delay=5)
+                page.keyboard.type(content, delay=2)
                 print("[NotePublisher] 本文入力完了 (keyboard fallback)")
 
             page.wait_for_timeout(3000)
