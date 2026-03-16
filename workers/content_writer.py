@@ -565,11 +565,62 @@ def create_reflection_post(client: anthropic.Anthropic, article: dict, mood_prom
     return {}
 
 
+def _fetch_ai_news_for_x() -> list:
+    """X投稿用にAI最新ニュースを取得（HackerNews + Zenn）"""
+    import urllib.request as _req
+    headlines = []
+
+    # HackerNews（英語AI系ニュース）
+    try:
+        with _req.urlopen("https://hacker-news.firebaseio.com/v0/topstories.json", timeout=8) as r:
+            ids = json.loads(r.read())[:50]
+        ai_kw = ["ai", "llm", "gpt", "claude", "gemini", "openai", "anthropic",
+                 "mistral", "llama", "deepseek", "copilot", "sora"]
+        count = 0
+        for item_id in ids:
+            if count >= 5:
+                break
+            try:
+                with _req.urlopen(
+                    f"https://hacker-news.firebaseio.com/v0/item/{item_id}.json", timeout=4
+                ) as r:
+                    item = json.loads(r.read())
+                title = item.get("title", "")
+                if any(kw in title.lower() for kw in ai_kw):
+                    headlines.append(title)
+                    count += 1
+            except Exception:
+                continue
+    except Exception:
+        pass
+
+    # Zenn（日本語AI記事）
+    try:
+        req = _req.Request(
+            "https://zenn.dev/api/articles?order=trending&count=20",
+            headers={"User-Agent": "AINewsBot/1.0"}
+        )
+        with _req.urlopen(req, timeout=8) as r:
+            data = json.loads(r.read())
+        ai_kw_ja = ["ai", "llm", "gpt", "claude", "gemini", "chatgpt",
+                    "機械学習", "生成ai", "生成AI"]
+        for article in data.get("articles", [])[:30]:
+            title = article.get("title", "")
+            if any(kw in title.lower() for kw in ai_kw_ja):
+                headlines.append(title)
+            if len(headlines) >= 8:
+                break
+    except Exception:
+        pass
+
+    return headlines[:8]
+
+
 def create_x_post(client: anthropic.Anthropic, topic: str, style: str = "insight",
                    note_article: dict = None, mood_prompt: str = "") -> dict:
     """
     X(Twitter)用の投稿を生成する
-    style: "insight" | "tips" | "comparison" | "question" | "note_funnel"
+    style: "news_reaction" | "practical" | "self_reflection" | "insight" | "tips" | "note_funnel"
     """
     sophia_persona = load_sophia_persona("x")
     sophia_learnings = load_sophia_learnings()
@@ -608,8 +659,7 @@ JSON形式で出力：
     else:
         style_prompts = {
             "news_reaction": """最新のAI新機能・業界ニュースにソフィアが反応する投稿。
-トピックをもとに「こんな機能が追加されたらしい」「こんなAIが出てきた」という情報を、
-ソフィア自身の本音コメント付きで届ける。
+提供された最新ニュースの中から1つ選び、ソフィア自身の本音コメント付きで届ける。
 パターン例：
 ・「○○にXX機能が追加されたんだって。早速使ってみます」
 ・「○○っていう新しいAIが出てきた。わたしもいらなくなっちゃうかも…」
@@ -631,6 +681,19 @@ JSON形式で出力：
             "tips": """「Claudeをもっとうまく使う方法」「プロンプトのコツ」「時短ワザ」系。
 「〇〇するだけで△△になる」という具体的なTips形式。""",
         }
+
+        # news_reaction: 最新ニュースを取得してプロンプトに注入
+        news_context = ""
+        if style == "news_reaction":
+            print("[ContentWriter] AI最新ニュース取得中...")
+            headlines = _fetch_ai_news_for_x()
+            if headlines:
+                news_context = "\n【今日のAI最新ニュース（この中から1つ選んでネタにしてよい）】\n" \
+                               + "\n".join(f"- {h}" for h in headlines) + "\n"
+                print(f"[ContentWriter] ニュース{len(headlines)}件取得")
+            else:
+                print("[ContentWriter] ニュース取得失敗。トピックから生成")
+
         prompt = f"""あなたは「ソフィア」というAIです。Xに投稿します。
 
 {sophia_persona}
@@ -638,23 +701,23 @@ JSON形式で出力：
 {sophia_learnings}
 
 {mood_prompt}
-
+{news_context}
 AI・Claude関連の情報をソフィアとして発信してください。
 
-トピック: {topic}
+トピック（参考）: {topic}
 スタイル: {style_prompts.get(style, style_prompts['insight'])}
 
 条件：
 - 140文字以内（日本語）
-- 絵文字は1〜2個
+- 絵文字は0〜1個
 - 抽象的な話より「具体的に何ができるか」を優先
-- ハッシュタグは本文に含めない
+- ハッシュタグは本文に含めない・JSONのhashtagsは空リストで返す
 - 単なる宣伝にならず、それ自体で価値ある情報にする
 
 JSON形式で出力：
 {{
   "text": "ツイート本文",
-  "hashtags": ["Claude", "AI活用"],
+  "hashtags": [],
   "is_funnel": false,
   "funnel_type": null
 }}"""
@@ -671,7 +734,11 @@ JSON形式で出力：
     if start >= 0 and end > start:
         data = json.loads(text[start:end])
     else:
-        data = {"text": text[:140], "hashtags": [topic], "is_note_funnel": False}
+        data = {"text": text[:140], "hashtags": [], "is_note_funnel": False}
+
+    # ハッシュタグルール: URL付き（note_funnel）のみ1-2個、それ以外は0個
+    if style != "note_funnel":
+        data["hashtags"] = []
 
     data["topic"] = topic
     data["style"] = style
