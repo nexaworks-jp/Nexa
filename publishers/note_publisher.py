@@ -926,6 +926,48 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
 
             page.wait_for_timeout(500)
 
+            # ========== 目次挿入 ==========
+            # スラッシュコマンド /目次 で目次ブロックを挿入してから本文を入力する
+            try:
+                # 本文エリアをクリックしてフォーカス
+                body_editors = page.evaluate("""() => {
+                    const eds = document.querySelectorAll('[contenteditable="true"]');
+                    for (const ed of eds) {
+                        if (ed.getBoundingClientRect().height > 100) return true;
+                    }
+                    return false;
+                }""")
+                if body_editors:
+                    # 大きいcontenteditable領域をクリック
+                    page.evaluate("""() => {
+                        const eds = document.querySelectorAll('[contenteditable="true"]');
+                        for (const ed of eds) {
+                            if (ed.getBoundingClientRect().height > 100) { ed.focus(); ed.click(); return; }
+                        }
+                    }""")
+                    page.wait_for_timeout(300)
+                    # /目次 と入力してスラッシュメニューを呼び出す
+                    page.keyboard.type("/")
+                    page.wait_for_timeout(800)
+                    # メニューが出たか確認（ProseMirrorのスラッシュメニューはrole="listbox"等）
+                    menu_visible = page.evaluate("""() => {
+                        const sel = '[role="listbox"], [role="menu"], [class*="slash"], [class*="command"]';
+                        const el = document.querySelector(sel);
+                        return !!(el && el.getBoundingClientRect().height > 0);
+                    }""")
+                    if menu_visible:
+                        page.keyboard.type("目次")
+                        page.wait_for_timeout(500)
+                        page.keyboard.press("Enter")
+                        page.wait_for_timeout(500)
+                        print("[NotePublisher] 目次挿入完了")
+                    else:
+                        # メニューが出なかったら / を消してスキップ
+                        page.keyboard.press("Backspace")
+                        print("[NotePublisher] スラッシュメニュー非表示のため目次スキップ")
+            except Exception as e:
+                print(f"[NotePublisher] 目次挿入スキップ: {e}")
+
             # ========== 本文入力 ==========
             html_body = _content_to_html(content)
             body_filled = False
