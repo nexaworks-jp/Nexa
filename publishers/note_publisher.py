@@ -232,74 +232,122 @@ def _content_to_html(text: str) -> str:
     return "".join(parts) or "<p></p>"
 
 
-def _fetch_gql_auth_token(session) -> str:
-    """
-    note_gql_auth_token JWT を取得する。
-    このJWTはeditor.note.comのJSが実行された後にしか発行されないため、
-    最終手段としてPlaywrightでJSを実行してクッキーを取得する。
-    """
-    # 既にクッキーにある場合はそのまま返す
-    existing = next((c.value for c in session.cookies if c.name == "note_gql_auth_token"), "")
-    if existing:
-        return existing
+def _session_to_pw_cookies(session) -> list:
+    """requestsセッションのクッキーをPlaywright形式に変換"""
+    pw = []
+    for c in session.cookies:
+        domain = (c.domain or "note.com").lstrip(".")
+        pw.append({"name": c.name, "value": c.value, "domain": domain, "path": c.path or "/"})
+    return pw
 
-    # Playwrightでeditor.note.comを開いてJWT取得（最も確実な方法）
+
+def _publish_via_playwright_fetch(session, title: str, content: str, hashtags: list, price: int, user_key: str) -> dict:
+    """
+    Playwrightのブラウザ内fetch()でAPIを呼び出して投稿。
+    ブラウザがeditor.note.comのJSを実行した後にfetchを発行するため、
+    note_gql_auth_tokenクッキーが自動的に付与される。
+    """
     try:
         from playwright.sync_api import sync_playwright
-
-        # requestsセッションのクッキーをPlaywright形式に変換
-        pw_cookies = []
-        for c in session.cookies:
-            domain = c.domain or "note.com"
-            # Playwrightはドットなしのドメインを要求
-            pw_cookies.append({
-                "name": c.name,
-                "value": c.value,
-                "domain": domain.lstrip("."),
-                "path": c.path or "/",
-            })
-
-        if pw_cookies:
-            with sync_playwright() as p:
-                browser = p.chromium.launch(
-                    headless=True,
-                    args=[
-                        "--no-sandbox",
-                        "--disable-setuid-sandbox",
-                        "--disable-blink-features=AutomationControlled",
-                        "--disable-dev-shm-usage",
-                    ]
-                )
-                context = browser.new_context(
-                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
-                )
-                context.add_init_script("delete Object.getPrototypeOf(navigator).webdriver;")
-                context.add_cookies(pw_cookies)
-
-                page = context.new_page()
-                try:
-                    # editor.note.comを開く→JSが実行されてnote_gql_auth_tokenが発行される
-                    page.goto("https://editor.note.com/notes/new", timeout=30000)
-                    page.wait_for_timeout(4000)  # JWT発行のJSを待つ
-                    all_cookies = context.cookies()
-                    token = next((c["value"] for c in all_cookies if c["name"] == "note_gql_auth_token"), "")
-                    if token:
-                        print(f"[NoteAPI] Playwright JWT取得成功: {token[:20]}...")
-                        # requestsセッションにも反映
-                        session.cookies.set("note_gql_auth_token", token, domain="note.com")
-                        return token
-                    else:
-                        print(f"[NoteAPI] Playwright JWT取得失敗（クッキー一覧: {[c['name'] for c in all_cookies[:10]]}）")
-                except Exception as e:
-                    print(f"[NoteAPI] Playwright JWT取得エラー: {e}")
-                finally:
-                    browser.close()
     except ImportError:
-        print("[NoteAPI] playwright未インストール")
-    except Exception as e:
-        print(f"[NoteAPI] JWT取得エラー: {e}")
+        return {"success": False, "reason": "playwright not installed"}
 
-    return ""
+    pw_cookies = _session_to_pw_cookies(session)
+    if not pw_cookies:
+        return {"success": False, "reason": "no cookies in session"}
+
+    free_body = _content_to_html(content)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(
+            headless=True,
+            args=["--no-sandbox", "--disable-setuid-sandbox",
+                  "--disable-blink-features=AutomationControlled", "--disable-dev-shm-usage"]
+        )
+        context = browser.new_context(
+            user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        )
+        context.add_init_script("delete Object.getPrototypeOf(navigator).webdriver;")
+        context.add_cookies(pw_cookies)
+        page = context.new_page()
+
+        # ネットワーク監視: JWTを発行しているURLを特定する
+        def on_response(response):
+            sc = response.headers.get("set-cookie", "")
+            if "note_gql_auth_token" in sc:
+                print(f"[NoteAPI-PW] JWT set-cookie from: {response.url}")
+            elif "note.com" in response.url and any(k in response.url for k in ("token", "auth", "session", "jwt")):
+                print(f"[NoteAPI-PW] 候補URL: {response.url} status={response.status}")
+        page.on("response", on_response)
+
+        try:
+            # editor.note.comを開いてJSを実行させる
+            page.goto("https://editor.note.com/notes/new", timeout=30000)
+            # エディター要素またはタイムアウトまで待機
+            try:
+                page.wait_for_selector('[contenteditable="true"]', timeout=8000)
+                print("[NoteAPI-PW] エディター検出")
+            except Exception:
+                page.wait_for_timeout(5000)
+
+            # JWT確認
+            all_cookies = context.cookies()
+            jwt_present = any(c["name"] == "note_gql_auth_token" for c in all_cookies)
+            print(f"[NoteAPI-PW] JWT={'あり' if jwt_present else 'なし'} cookies={[c['name'] for c in all_cookies]}")
+
+            # ブラウザのfetch()でAPI呼び出し（editor.note.com originで実行）
+            result = page.evaluate("""
+                async ([title, freeBody, hashtags, price]) => {
+                    const h = {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json, text/plain, */*',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    };
+                    const opts = (method, body) => ({method, headers: h, credentials: 'include', body: JSON.stringify(body)});
+
+                    // Step1: 空の下書き作成
+                    const r1 = await fetch('https://note.com/api/v1/text_notes', opts('POST', {template_key: null}));
+                    const t1 = await r1.text();
+                    if (!r1.ok) return {success: false, step: 1, status: r1.status, body: t1.slice(0, 300)};
+                    const d1 = JSON.parse(t1);
+                    const noteId = String(d1.data?.id || '');
+                    const noteKey = String(d1.data?.key || noteId);
+                    if (!noteId) return {success: false, step: 1, reason: 'no id', body: t1.slice(0, 200)};
+
+                    // Step2: 本文保存
+                    const r2 = await fetch(
+                        `https://note.com/api/v1/text_notes/draft_save?id=${noteId}&is_temp_saved=true`,
+                        opts('POST', {name: title, free_body: freeBody, body_length: freeBody.length, index: false, is_lead_form: false})
+                    );
+                    if (!r2.ok) return {success: false, step: 2, status: r2.status, body: (await r2.text()).slice(0, 300)};
+
+                    // Step3: 公開
+                    const r3 = await fetch(`https://note.com/api/v1/text_notes/${noteId}`,
+                        opts('PUT', {name: title, free_body: freeBody, pay_body: '', price, hashtags,
+                                     body_length: freeBody.length, index: false, send_notifications_flag: true})
+                    );
+                    const t3 = await r3.text();
+                    if (r3.ok) {
+                        const d3 = JSON.parse(t3);
+                        return {success: true, status: r3.status, noteId, noteKey,
+                                url: d3.data?.noteUrl || d3.data?.url || ''};
+                    }
+                    return {success: false, step: 3, status: r3.status, body: t3.slice(0, 400)};
+                }
+            """, [title, free_body, list(hashtags[:10]), price])
+
+            print(f"[NoteAPI-PW] fetch結果: {result}")
+
+            if result.get("success"):
+                note_url = result.get("url") or f"https://note.com/{user_key}/n/{result.get('noteKey', '')}"
+                return {"success": True, "url": note_url, "title": title, "is_draft": False}
+            return {"success": False, "reason": f"step{result.get('step',3)} {result.get('status')} {result.get('body', result.get('reason', ''))[:200]}"}
+
+        except Exception as e:
+            print(f"[NoteAPI-PW] エラー: {e}")
+            return {"success": False, "reason": str(e)}
+        finally:
+            browser.close()
 
 
 def _create_and_publish(session, title: str, content: str, hashtags: list, price: int, user_key: str) -> dict:
@@ -478,12 +526,14 @@ def api_post_with_session_cookie(article: dict) -> dict:
 
         print(f"[NoteAPI-Session] CSRF={'あり' if csrf_token else 'なし'} user={user_key or '不明'} session={session_cookie['value'][:8]}...")
 
-        # Origin/Referer を editor.note.com に変更（ブラウザ実測値に合わせる）
-        session.headers.update({
-            "Origin": "https://editor.note.com",
-            "Referer": "https://editor.note.com/",
-        })
+        # Playwrightのブラウザfetch()で投稿（editor originで全クッキー付き）
+        result = _publish_via_playwright_fetch(session, title, content, hashtags, price, user_key)
+        if result.get("success"):
+            return result
 
+        print(f"[NoteAPI-Session] Playwright fetch失敗: {result.get('reason', '')[:100]} → requests fallback")
+        # フォールバック: requestsでPUT
+        session.headers.update({"Origin": "https://editor.note.com", "Referer": "https://editor.note.com/"})
         return _create_and_publish(session, title, content, hashtags, price, user_key)
 
     except Exception as e:
@@ -596,11 +646,14 @@ def api_post(article: dict, email: str, password: str) -> dict:
             if "csrf" in c.name.lower() or "xsrf" in c.name.lower():
                 session.headers["X-CSRF-Token"] = c.value
 
-        session.headers.update({
-            "Origin": "https://editor.note.com",
-            "Referer": "https://editor.note.com/",
-        })
+        # Playwrightのブラウザfetch()で投稿（editor originで全クッキー付き）
+        result = _publish_via_playwright_fetch(session, title, content, hashtags, price, user_key)
+        if result.get("success"):
+            return result
 
+        print(f"[NoteAPI] Playwright fetch失敗: {result.get('reason', '')[:100]} → requests fallback")
+        # フォールバック: requestsでPUT
+        session.headers.update({"Origin": "https://editor.note.com", "Referer": "https://editor.note.com/"})
         return _create_and_publish(session, title, content, hashtags, price, user_key)
 
     except Exception as e:
