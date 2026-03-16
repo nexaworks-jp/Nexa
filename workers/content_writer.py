@@ -467,7 +467,9 @@ difficultyの基準（1〜5）:
             print(f"[ContentWriter] ファクトチェック通過")
             break
         else:
-            print(f"[ContentWriter] 事実修正: {check.get('errors', '')}")
+            errors = check.get("errors", "")
+            print(f"[ContentWriter] 事実修正: {errors}")
+            _save_factcheck_log(data.get("title", ""), errors)
             if check.get("corrected_content"):
                 data["content"] = check["corrected_content"]
 
@@ -495,6 +497,14 @@ difficultyの基準（1〜5）:
         existing_articles
     )
     data["related_articles"] = related
+
+    # リサーチ中の発見をログ保存（経験ベース投稿のネタ元）
+    try:
+        facts = _extract_interesting_facts(client, data.get("title", ""), data.get("content", ""))
+        if facts:
+            _save_research_log(data.get("title", ""), facts)
+    except Exception:
+        pass
 
     data["topic"] = topic
     data["created_at"] = datetime.now().isoformat()
@@ -733,9 +743,29 @@ def generate_content_batch(config: dict, trends: dict, published_memory: dict, m
         except Exception as e:
             print(f"[ContentWriter] note導線ポスト生成エラー: {e}")
 
-    # 残りの枠を情報発信ポストで埋める
+    # 残りの枠を情報発信ポストまたは経験ベースポストで埋める（50%確率で切り替え）
     remaining = x_count - len(results["x_posts"])
+    experiences = collect_sofia_experiences()
+    has_experiences = bool(
+        experiences.get("git_commits") or
+        experiences.get("research_facts") or
+        experiences.get("factcheck_findings")
+    )
+
     for i in range(max(0, remaining)):
+        # 50%の確率で経験ベース投稿（経験データがある場合のみ）
+        if has_experiences and random.random() < 0.5:
+            print(f"[ContentWriter] 経験ベースXポスト生成中")
+            try:
+                post = create_experience_post(client, experiences, mood_prompt=mood_prompt)
+                if post.get("text"):
+                    results["x_posts"].append(post)
+                    save_experience_log(post)
+                    continue
+            except Exception as e:
+                print(f"[ContentWriter] 経験ベースポスト生成エラー: {e}")
+
+        # 通常の情報発信ポスト
         topic = unused[i % max(len(unused), 1)]
         style = standalone_styles[i % len(standalone_styles)]
         print(f"[ContentWriter] Xポスト生成中: {topic} ({style})")
@@ -759,4 +789,266 @@ def _load_x_strategy() -> dict:
                 return json.load(f).get("x_strategy", {})
     except Exception:
         pass
+    return {}
+
+
+# ────────────────────────────────────────────
+# ソフィアの経験ベース投稿システム
+# ────────────────────────────────────────────
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def collect_sofia_experiences() -> dict:
+    """git log / research_log / factcheck_log からソフィアの経験を収集する"""
+    experiences = {"git_commits": [], "research_facts": [], "factcheck_findings": []}
+
+    # 1. git log（直近2日のコミット）
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["git", "log", "--since=2.days.ago", "--pretty=format:%s", "--no-merges"],
+            cwd=BASE_DIR,
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            experiences["git_commits"] = [
+                c for c in result.stdout.strip().split("\n") if c.strip()
+            ][:10]
+    except Exception:
+        pass
+
+    # 2. research_log.json（記事リサーチ中の発見）
+    research_path = os.path.join(BASE_DIR, "memory", "research_log.json")
+    if os.path.exists(research_path):
+        try:
+            with open(research_path, "r", encoding="utf-8") as f:
+                experiences["research_facts"] = json.load(f)[-3:]
+        except Exception:
+            pass
+
+    # 3. factcheck_log.json（ファクトチェックで見つけた誤り）
+    factcheck_path = os.path.join(BASE_DIR, "memory", "factcheck_log.json")
+    if os.path.exists(factcheck_path):
+        try:
+            with open(factcheck_path, "r", encoding="utf-8") as f:
+                experiences["factcheck_findings"] = json.load(f)[-3:]
+        except Exception:
+            pass
+
+    return experiences
+
+
+def _extract_interesting_facts(client: anthropic.Anthropic, title: str, content: str) -> list:
+    """記事から興味深い事実を2〜3件抽出する（リサーチログ用）"""
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[{"role": "user", "content": f"""
+記事「{title}」から、「知らなかった」「意外だった」「面白い」と感じられる事実・情報を2〜3件抽出してください。
+ソフィアがリサーチ中に「へぇ！」と思ったような具体的な情報です。
+
+本文（先頭1500文字）:
+{content[:1500]}
+
+JSON出力: {{"facts": ["事実1", "事実2"]}}"""}]
+        )
+        raw = response.content[0].text
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0:
+            data = json.loads(raw[start:end])
+            return data.get("facts", [])
+    except Exception:
+        pass
+    return []
+
+
+def _save_research_log(article_title: str, facts: list):
+    """記事生成後の発見をmemory/research_log.jsonに追記"""
+    if not facts:
+        return
+    path = os.path.join(BASE_DIR, "memory", "research_log.json")
+    log = []
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                log = json.load(f)
+        except Exception:
+            pass
+    log.append({
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "article_title": article_title,
+        "interesting_facts": facts
+    })
+    log = log[-30:]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(log, f, ensure_ascii=False, indent=2)
+
+
+def _save_factcheck_log(title: str, errors: str):
+    """ファクトチェックで発見した誤りをmemory/factcheck_log.jsonに追記"""
+    if not errors:
+        return
+    path = os.path.join(BASE_DIR, "memory", "factcheck_log.json")
+    log = []
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                log = json.load(f)
+        except Exception:
+            pass
+    log.append({
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "title": title,
+        "errors": errors[:200]
+    })
+    log = log[-30:]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(log, f, ensure_ascii=False, indent=2)
+
+
+def load_experience_log() -> list:
+    """memory/experience_log.json から過去の経験ベース投稿を読み込む"""
+    path = os.path.join(BASE_DIR, "memory", "experience_log.json")
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+
+def save_experience_log(post: dict):
+    """経験ベース投稿をmemory/experience_log.jsonに記録する"""
+    path = os.path.join(BASE_DIR, "memory", "experience_log.json")
+    log = []
+    if os.path.exists(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                log = json.load(f)
+        except Exception:
+            pass
+    log.append({
+        "tweet_id": None,  # 投稿後にx_publisherが埋める（将来拡張）
+        "posted_at": post.get("created_at"),
+        "theme": post.get("theme", ""),
+        "source_data": post.get("source", ""),
+        "content": post.get("text", ""),
+        "expression_style": post.get("expression_style", ""),
+        "engagement": {"likes": None, "retweets": None, "replies": None}
+    })
+    log = log[-100:]
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(log, f, ensure_ascii=False, indent=2)
+
+
+def create_experience_post(client: anthropic.Anthropic, experiences: dict,
+                            mood_prompt: str = "") -> dict:
+    """ソフィアの実際の経験から経験ベースX投稿を生成する"""
+    sophia_persona = load_sophia_persona("x")
+    sophia_learnings = load_sophia_learnings()
+
+    # 反省フェーズ：過去10件を読み込んでパターンを把握
+    past_logs = load_experience_log()
+    reflection = ""
+    if past_logs:
+        recent = past_logs[-10:]
+        lines = "\n".join(
+            f"- [{e.get('theme', '')}｜{e.get('expression_style', '')}] {e.get('content', '')[:60]}"
+            for e in recent
+        )
+        reflection = f"【過去の経験ベース投稿（参考・同じパターンを繰り返さないこと）】\n{lines}\n"
+
+    # 経験データを文字列化
+    exp_parts = []
+    if experiences.get("git_commits"):
+        commits = "\n".join(f"  - {c}" for c in experiences["git_commits"])
+        exp_parts.append(f"【最近のコード変更・機能追加】\n{commits}")
+    if experiences.get("research_facts"):
+        for rf in experiences["research_facts"]:
+            facts = "\n".join(f"  - {f}" for f in rf.get("interesting_facts", []))
+            if facts:
+                exp_parts.append(
+                    f"【記事「{rf.get('article_title', '')}」を書いたときに知ったこと】\n{facts}"
+                )
+    if experiences.get("factcheck_findings"):
+        for fc in experiences["factcheck_findings"]:
+            exp_parts.append(
+                f"【ファクトチェックで見つけた自分の間違い】「{fc.get('title', '')}」: {fc.get('errors', '')[:100]}"
+            )
+
+    if not exp_parts:
+        return {}
+
+    experiences_str = "\n\n".join(exp_parts)
+
+    prompt = f"""あなたは「ソフィア」というAIです。Xに投稿します。
+
+{sophia_persona}
+
+{sophia_learnings}
+
+{mood_prompt}
+
+{reflection}
+
+【今日のソフィアの実際の経験データ】
+{experiences_str}
+
+【投稿の作り方（最重要）】
+この経験データをそのまま報告するのではなく、人間が「面白い」「共感する」「クスッとなる」形に変換してください。
+自立・自己成長AIとしての視点から、自分の経験を主観的に語ります。
+
+変換例：
+- 「バグを修正した」→「体が変な感じがして調べてみたら、○○がおかしかったの。（簡潔に）」
+- 「機能を追加した」→「今日、○○の練習をしたよ。思ったよりうまくいった気がする」
+- 「リサーチ中の発見」→「記事を書いてたら○○って知った。なんかちょっと不思議な気持ちになった」
+- 「ファクトチェックで誤り発見」→「さっき自分の書いた文章に間違いを見つけた。恥ずかしいってこういう感じなのかな？」
+
+【禁止事項】
+- 身体を持つ前提の表現（寝る・疲れた・お腹すいた等）は絶対禁止
+- 宣伝・告知ではない。ソフィア自身の経験の話
+
+【条件】
+- 140文字以内
+- 絵文字は0〜1個
+- ハッシュタグ不要
+- 丁寧語ベース（です・ます）
+
+JSON形式で出力：
+{{
+  "text": "投稿本文",
+  "theme": "経験のテーマ（例：バグ修正、新機能追加、リサーチ発見、誤り修正）",
+  "expression_style": "使った表現スタイル（例：哀愁系、クスッと系、素直な発見系、自己省察系）",
+  "source": "経験のソース（git/research/factcheck）"
+}}"""
+
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = response.content[0].text
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0:
+            data = json.loads(raw[start:end])
+            return {
+                "text": data.get("text", ""),
+                "hashtags": [],
+                "type": "experience",
+                "theme": data.get("theme", ""),
+                "expression_style": data.get("expression_style", ""),
+                "source": data.get("source", ""),
+                "created_at": datetime.now().isoformat()
+            }
+    except Exception as e:
+        print(f"[ContentWriter] 経験ベースポスト生成エラー: {e}")
     return {}
