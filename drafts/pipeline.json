@@ -88,9 +88,11 @@
     ],
     "price": 0,
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_183318.md",
-    "status": "pending",
+    "status": "posted",
     "created_at": "2026-03-14T18:33:18.469951",
-    "retry_count": 1
+    "retry_count": 1,
+    "posted_at": "2026-03-16T05:54:35.542182",
+    "url": "https://note.com/n/n3130c6705701"
   },
   {
     "title": "AIツール選びで失敗しない｜自分に合ったサービスを見つける3つの判断基準",
@@ -105,9 +107,11 @@
     ],
     "price": 0,
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_183521.md",
-    "status": "pending",
+    "status": "posted",
     "created_at": "2026-03-14T18:35:21.262269",
-    "retry_count": 0
+    "retry_count": 1,
+    "posted_at": "2026-03-16T06:46:41.170533",
+    "url": "https://note.com/n/nf5957da827c7"
   },
   {
     "title": "Claude Code × Skills/MCPの連携で開発効率が激変｜実装パターン別の活用Tips",
@@ -238,18 +242,6 @@
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260315_213846.md",
     "status": "pending",
     "created_at": "2026-03-15T21:38:46.399722",
-    "retry_count": 0
-  },
-  {
-    "title": "Claude CodeでSaaSを完全ソロ運用する｜実際の開発フローと月商300万事例から学ぶTips【実践ガイド】【初心者向け解説】",
-    "hashtags": [
-      "AI",
-      "初心者"
-    ],
-    "price": 0,
-    "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260316_062019.md",
-    "status": "pending",
-    "created_at": "2026-03-16T06:20:19.922189",
     "retry_count": 0
   }
 ]
