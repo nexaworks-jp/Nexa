@@ -284,11 +284,13 @@ created_at: {article.get('created_at', '')}
 # ==================== 下書き作成・公開の共通ヘルパー ====================
 
 def _inline_md(text: str) -> str:
-    """インラインマークダウン（bold/italic/code）をHTMLに変換"""
+    """インラインマークダウン（bold/italic/code/link）をHTMLに変換"""
     text = _re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
     text = _re.sub(r'__(.+?)__', r'<strong>\1</strong>', text)
     text = _re.sub(r'\*(.+?)\*', r'<em>\1</em>', text)
     text = _re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+    # [テキスト](URL) → <a href="URL">テキスト</a>
+    text = _re.sub(r'\[([^\]]+)\]\((https?://[^\)]+)\)', r'<a href="\2">\1</a>', text)
     return text
 
 

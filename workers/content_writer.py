@@ -309,8 +309,9 @@ def create_note_article(client: anthropic.Anthropic, topic: str, published_topic
     sophia_persona = load_sophia_persona("note")
     sophia_learnings = load_sophia_learnings()
 
-    # 既存記事リンク指示（記事が3件以上あるときのみ有効化）
+    # リンク指示（内部リンク + 外部リンク）
     internal_link_hint = ""
+    internal_section = ""
     if published_note_articles and len(published_note_articles) >= 3:
         articles_list = "\n".join(
             f'- 「{a["title"]}」 → {a["url"]}'
@@ -318,14 +319,20 @@ def create_note_article(client: anthropic.Anthropic, topic: str, published_topic
             if a.get("url") and "note.com" in a.get("url", "")
         )
         if articles_list:
-            internal_link_hint = f"""
-【関連記事の内部リンク（重要）】
-以下の既存記事と関連する専門用語を本文で説明したとき、その説明段落の直後の行にURLのみを単独で挿入してください。
-note.comはURLを単独行に置くと自動でカード表示します。
-挿入は最大2箇所まで・関連性が明確な場合のみ（無理に入れない）。
+            internal_section = f"""
+【自分の記事への内部リンク】
+以下の既存記事と関連する専門用語を本文で説明したとき、その段落の直後の行にURLのみを単独で挿入してください。
+note.comはURLを単独行に置くと自動でカード表示します。挿入は最大2箇所まで・関連性が明確な場合のみ。
 
 {articles_list}
 """
+
+    internal_link_hint = f"""
+【リンクの活用（読者の理解を深めるために積極的に使う）】
+- 専門用語・概念を説明するとき、信頼できる外部サイト（Wikipedia・公式ドキュメント・技術ブログ等）へのリンクを本文中に [テキスト](URL) 形式で入れてよい
+- 外部リンクは最大3箇所まで、明らかに役立つ場合のみ（無理に入れない）
+- URLが長くなる場合は [わかりやすい名前](URL) 形式で見やすくする
+{internal_section}"""
 
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
