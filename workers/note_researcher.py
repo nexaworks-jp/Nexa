@@ -463,9 +463,7 @@ def run(config: dict) -> dict:
         print("[NoteResearcher] AI分析中...")
         analysis = analyze_with_claude(config, all_articles, similar_data)
 
-    # 5. ファイル更新
-    if main_articles:
-        update_evopsy_md(main_articles, analysis)
+    # 5. ファイル更新（evopsy.mdは廃止済みのため呼び出しを削除）
     update_market_insights(similar_data, analysis)
 
     # 6. AI初心者ジャンルのリサーチ（claude_beginner.md 更新用）

@@ -734,7 +734,7 @@ JSON形式で出力：
     if start >= 0 and end > start:
         data = json.loads(text[start:end])
     else:
-        data = {"text": text[:140], "hashtags": [], "is_note_funnel": False}
+        data = {"text": text[:140], "hashtags": [], "is_funnel": False, "funnel_type": None}
 
     # ハッシュタグルール: URL付き（note_funnel）のみ1-2個、それ以外は0個
     if style != "note_funnel":
