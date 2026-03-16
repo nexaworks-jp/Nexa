@@ -42,9 +42,11 @@
     ],
     "price": 0,
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_180148.md",
-    "status": "pending",
+    "status": "posted",
     "created_at": "2026-03-14T18:01:48.998690",
-    "retry_count": 0
+    "retry_count": 1,
+    "posted_at": "2026-03-16T05:14:42.857443",
+    "url": "https://editor.note.com/notes/n0128aeb06f39/publish/"
   },
   {
     "title": "Playwright + OWASP ZAP + Claude Codeで脆弱性診断を自動化する｜セキュアな開発フロー構築ガイド",
