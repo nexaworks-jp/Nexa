@@ -244,8 +244,7 @@ def _session_to_pw_cookies(session) -> list:
 def _publish_via_playwright_fetch(session, title: str, content: str, hashtags: list, price: int, user_key: str) -> dict:
     """
     Playwrightのブラウザ内fetch()でAPIを呼び出して投稿。
-    ブラウザがeditor.note.comのJSを実行した後にfetchを発行するため、
-    note_gql_auth_tokenクッキーが自動的に付与される。
+    エディターが自動作成したノートを再利用し、GET/draft_save/PUTの自然なフローで公開する。
     """
     try:
         from playwright.sync_api import sync_playwright
@@ -271,74 +270,70 @@ def _publish_via_playwright_fetch(session, title: str, content: str, hashtags: l
         context.add_cookies(pw_cookies)
         page = context.new_page()
 
-        # ネットワーク監視: Set-CookieでJWT発行元を特定 + APIレスポンスを記録
-        api_responses = {}
-        def on_response(response):
-            sc = response.headers.get("set-cookie", "")
-            if "note_gql_auth_token" in sc:
-                print(f"[NoteAPI-PW] JWT set-cookie from: {response.url}")
-            if "note.com/api/" in response.url and response.status < 400:
+        # エディターが自動作成したノートIDを捕捉する
+        # エディターはpage.gotoの時点でPOST /api/v1/text_notesを自動実行する
+        editor_note = {"id": "", "key": ""}
+        def capture_editor_note(route, request):
+            response = route.fetch()
+            if request.method == "POST":
                 try:
-                    api_responses[response.url.split("?")[0]] = response.json()
+                    import json as _json
+                    data = _json.loads(response.body())
+                    nd = data.get("data", {})
+                    if nd.get("id") and not editor_note["id"]:
+                        editor_note["id"] = str(nd["id"])
+                        editor_note["key"] = str(nd.get("key", ""))
+                        print(f"[NoteAPI-PW] editor note captured: id={editor_note['id']} key={editor_note['key']}")
                 except Exception:
                     pass
-        page.on("response", on_response)
-
-        # APIリクエストのみ記録（静的アセット除外）
-        api_reqs = []
-        def on_request(req):
-            url = req.url
-            if "note.com/api/" in url or ("note.com" in url and "_next" not in url and ".js" not in url and ".css" not in url and ".png" not in url):
-                api_reqs.append(f"{req.method} {url[:120]}")
-        page.on("request", on_request)
+            route.fulfill(response=response)
+        page.route("**/api/v1/text_notes", capture_editor_note)
 
         try:
-            # note.com/notes/new から入る（自然なフロー）→ editor.note.com にリダイレクト
+            # note.com/notes/new から入る → editor.note.com にリダイレクト
+            # この過程でエディターがノートを自動作成する
             page.goto("https://note.com/notes/new", timeout=30000)
-            # エディター要素またはタイムアウトまで待機
             try:
                 page.wait_for_selector('[contenteditable="true"]', timeout=10000)
                 print("[NoteAPI-PW] エディター検出")
             except Exception:
                 page.wait_for_timeout(6000)
 
-            # JWT確認
-            all_cookies = context.cookies()
-            jwt_present = any(c["name"] == "note_gql_auth_token" for c in all_cookies)
-            print(f"[NoteAPI-PW] JWT={'あり' if jwt_present else 'なし'} cookies={[c['name'] for c in all_cookies]}")
+            ed_id = editor_note["id"]
+            ed_key = editor_note["key"]
+            print(f"[NoteAPI-PW] editor_note: id={ed_id} key={ed_key}")
 
-            # APIリクエスト一覧
-            print(f"[NoteAPI-PW] APIリクエスト({len(api_reqs)}件): {api_reqs}")
-
-            # current_user レスポンス内容（JWTがここに含まれているか確認）
-            for url, body in api_responses.items():
-                if "current_user" in url or "token" in url:
-                    print(f"[NoteAPI-PW] {url}: {str(body)[:400]}")
-
-            # document.cookie と localStorage を確認（JWTの格納場所特定）
-            doc_cookie = page.evaluate("() => document.cookie")
-            ls_data = page.evaluate("() => { try { return JSON.stringify(Object.fromEntries(Object.keys(localStorage).map(k=>[k, localStorage.getItem(k)]))).slice(0,500); } catch(e) { return String(e); } }")
-            print(f"[NoteAPI-PW] document.cookie: {doc_cookie[:300]}")
-            print(f"[NoteAPI-PW] localStorage: {ls_data[:300]}")
-
-            # ブラウザのfetch()でAPI呼び出し（editor.note.com originで実行）
+            # ブラウザのfetch()でAPI呼び出し
+            # エディターが作成したノートを使い、GET→draft_save→PUTの自然なフローで公開
             result = page.evaluate("""
-                async ([title, freeBody, hashtags, price]) => {
+                async ([title, freeBody, hashtags, price, editorNoteId, editorNoteKey]) => {
                     const h = {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json, text/plain, */*',
                         'X-Requested-With': 'XMLHttpRequest'
                     };
                     const opts = (method, body) => ({method, headers: h, credentials: 'include', body: JSON.stringify(body)});
+                    const getJson = url => fetch(url, {method: 'GET', headers: {'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest'}, credentials: 'include'});
 
-                    // Step1: 空の下書き作成
-                    const r1 = await fetch('https://note.com/api/v1/text_notes', opts('POST', {template_key: null}));
-                    const t1 = await r1.text();
-                    if (!r1.ok) return {success: false, step: 1, status: r1.status, body: t1.slice(0, 300)};
-                    const d1 = JSON.parse(t1);
-                    const noteId = String(d1.data?.id || '');
-                    const noteKey = String(d1.data?.key || noteId);
-                    if (!noteId) return {success: false, step: 1, reason: 'no id', body: t1.slice(0, 200)};
+                    let noteId = editorNoteId;
+                    let noteKey = editorNoteKey;
+
+                    // エディターがノートを作成済みの場合はそれを使う（二重作成を防ぐ）
+                    // 作成されていなければ自分で作成
+                    if (!noteId) {
+                        const r1 = await fetch('https://note.com/api/v1/text_notes', opts('POST', {template_key: null}));
+                        const t1 = await r1.text();
+                        if (!r1.ok) return {success: false, step: 1, status: r1.status, body: t1.slice(0, 300)};
+                        const d1 = JSON.parse(t1);
+                        noteId = String(d1.data?.id || '');
+                        noteKey = String(d1.data?.key || noteId);
+                        if (!noteId) return {success: false, step: 'new', reason: 'no id', body: t1.slice(0, 200)};
+                    }
+
+                    // Step1b: ドラフトをロード（エディターの自然なフローを再現）
+                    const ts = Date.now();
+                    const r1b = await getJson(`https://note.com/api/v3/notes/${noteKey}?draft=true&draft_reedit=false&ts=${ts}`);
+                    const draft_load_status = r1b.status;
 
                     // Step2: 本文保存
                     const r2 = await fetch(
@@ -356,11 +351,12 @@ def _publish_via_playwright_fetch(session, title: str, content: str, hashtags: l
                     if (r3.ok) {
                         const d3 = JSON.parse(t3);
                         return {success: true, status: r3.status, noteId, noteKey,
-                                url: d3.data?.noteUrl || d3.data?.url || ''};
+                                url: d3.data?.noteUrl || d3.data?.url || '',
+                                draft_load_status};
                     }
-                    return {success: false, step: 3, status: r3.status, body: t3.slice(0, 400)};
+                    return {success: false, step: 3, status: r3.status, body: t3.slice(0, 400), draft_load_status};
                 }
-            """, [title, free_body, list(hashtags[:10]), price])
+            """, [title, free_body, list(hashtags[:10]), price, ed_id, ed_key])
 
             print(f"[NoteAPI-PW] fetch結果: {result}")
 
