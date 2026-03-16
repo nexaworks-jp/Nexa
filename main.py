@@ -132,15 +132,6 @@ def run_content_task(config, trends, published, dry_run, mood_prompt: str = ""):
     # 4. X投稿
     x_results = x_publisher.publish(config, x_posts, dry_run)
 
-    # 投稿結果をLINEに通知
-    if not dry_run:
-        posted = [r for r in note_results if r.get("success") and not r.get("is_draft")]
-        drafts = [r for r in note_results if r.get("is_draft") and r.get("success")]
-        if posted:
-            line_notifier.notify_proposals_ready(config, posted)
-        elif drafts:
-            line_notifier.notify_draft_ready(config, drafts)
-
     # トピック使用履歴・投稿記録を更新
     for a, r in zip(articles, note_results):
         t = a.get("topic", "")
@@ -276,13 +267,8 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
 
     do_content  = (hour == content_hour) or weekly or dry_run or force_content
     do_improve  = (hour == improve_hour) or weekly or dry_run
-    do_saas     = (weekday in saas_weekdays) or weekly or dry_run
 
-    print(f"  スケジュール: content={do_content} saas={do_saas} improve={do_improve}")
-
-    # LINE: 起動通知（22時のみ or スケジュール設定時）
-    if not dry_run and (startup_notify or hour == improve_hour):
-        line_notifier.notify_startup(config)
+    print(f"  スケジュール: content={do_content} improve={do_improve}")
 
     # 今日のソフィアの気分（1日固定）
     today_mood = mood_generator.get_today_mood()
@@ -298,8 +284,6 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     forced_tasks = ["crowdworks"]
     if do_content:
         forced_tasks.append("content")
-    if do_saas:
-        forced_tasks.append("saas")
 
     state = {
         "earnings": earnings, "strategy": strategy,
@@ -350,33 +334,11 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
                 for _ in range(proposals_count):
                     risk_state = risk_manager.record_proposal(risk_state)
                 risk_state = risk_manager.record_success(risk_state, "crowdworks")
-                if not dry_run and cw_result.get("proposals"):
-                    suitable = cw_result.get("scan", {}).get("suitable", [])
-                    line_notifier.notify_jobs_found(config, suitable)
-                    line_notifier.notify_proposals_ready(config, cw_result["proposals"])
             except Exception as e:
                 risk_state = risk_manager.record_error(risk_state, "crowdworks", str(e))
                 print(f"[Main] crowdworksタスクエラー: {e}")
-                if not dry_run:
-                    line_notifier.notify_risk_alert(config, "crowdworks", str(e)[:80])
         else:
             print(f"[RiskManager] crowdworks スキップ: {reason}")
-
-    if "saas" in tasks or "all" in tasks:
-        ok, reason = risk_manager.can_run("saas", risk_state)
-        if ok:
-            try:
-                all_results["saas"] = run_saas_task(config, trends, saas_memory, dry_run)
-                risk_state = risk_manager.record_success(risk_state, "saas")
-                if not dry_run:
-                    idea = all_results["saas"].get("saas_result", {}).get("idea", {})
-                    if idea:
-                        line_notifier.notify_saas_idea(config, idea)
-            except Exception as e:
-                risk_state = risk_manager.record_error(risk_state, "saas", str(e))
-                print(f"[Main] saasタスクエラー: {e}")
-        else:
-            print(f"[RiskManager] saas スキップ: {reason}")
 
     # 成長マイルストーン投稿（10・50・100・以降100刻み）
     if do_content and not dry_run:
@@ -485,7 +447,7 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
 
             from apply_new_modules import apply_new_modules
             new_modules = apply_new_modules()
-            line_notifier.notify_weekly_improvement(config, improve_result["analysis"], new_modules)
+            print(f"[Step 5] 週次改善完了: {new_modules}件の新モジュール")
     else:
         print("\n[Step 5] 自己改善: 週次実行時のみ（スキップ）")
 
@@ -495,11 +457,6 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     save_memory("proposals.json", proposals_memory)
     save_memory("saas.json", saas_memory)
     risk_manager.save_state(risk_state)
-
-    # LINE: 提案が出た時のみ通知（毎回の定時通知は不要）
-    if not dry_run and all_results.get("crowdworks", {}).get("proposals"):
-        proposals_today = len(all_results["crowdworks"]["proposals"])
-        line_notifier.notify_daily_report(config, earnings, risk_state, proposals_today)
 
     # サマリー
     print(f"\n{'='*52}")
