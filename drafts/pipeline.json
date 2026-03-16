@@ -74,9 +74,11 @@
     ],
     "price": 0,
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_183035.md",
-    "status": "pending",
+    "status": "posted",
     "created_at": "2026-03-14T18:30:35.573048",
-    "retry_count": 0
+    "retry_count": 1,
+    "posted_at": "2026-03-16T05:34:14.618473",
+    "url": "https://note.com/n/n370a05b9a665"
   },
   {
     "title": "Claude Codeのエージェント機能を使いこなす｜複数AIの協働で何ができるか【実践ガイド】",
