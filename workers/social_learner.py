@@ -220,8 +220,14 @@ def save_learnings(learnings: dict):
     print(f"[SocialLearner] sophia_learnings.json 保存完了（累計{learnings.get('learning_count', 0)}回）")
 
 
+ENABLED = False  # フォロワー50人超えたら True に変更
+
+
 def run(config: dict):
     """ソフィアの社会学習を実行"""
+    if not ENABLED:
+        print("[SocialLearner] 停止中（ENABLED=False）。フォロワー50人超えたら workers/social_learner.py の ENABLED を True に。")
+        return
     print("[SocialLearner] ソフィアの人間らしさ学習を開始...")
 
     api_key = config.get("anthropic_api_key", "")

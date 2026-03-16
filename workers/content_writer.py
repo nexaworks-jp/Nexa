@@ -8,6 +8,10 @@ import random
 import os
 from datetime import datetime
 
+# ---- 機能フラグ（True に変えるだけで有効化） ----
+_FACT_EXTRACTION_ENABLED = False  # 事実抽出ログ（経験ベース投稿のネタ元）
+# ------------------------------------------------
+
 
 def load_style_reference() -> str:
     """claude_beginner.md を読み込んでスタイルガイドを返す"""
@@ -149,7 +153,7 @@ def fact_check_article(client: anthropic.Anthropic, title: str, content: str) ->
 - Notion AI: Notion内のAI機能。月額$10追加（Notionプラン要）"""
 
     response = client.messages.create(
-        model="claude-sonnet-4-6",  # 生成元(Haiku)と異なるモデルで独立検証
+        model="claude-haiku-4-5-20251001",  # Sonnetから変更（コスト削減）
         max_tokens=4000,
         messages=[{
             "role": "user",
@@ -487,24 +491,33 @@ difficultyの基準（1〜5）:
     else:
         print(f"[ContentWriter] 整合性チェック通過")
 
-    # 関連記事を選定
+    # 関連記事を選定（静的サイト再開後に有効化・2026-03-31以降）
     if existing_articles is None:
         existing_articles = []
-    related = find_related_articles(
-        client,
-        data.get("title", ""),
-        data.get("summary", ""),
-        existing_articles
-    )
+    _enable_related = datetime.now() >= datetime(2026, 3, 31)
+    if _enable_related:
+        related = find_related_articles(
+            client,
+            data.get("title", ""),
+            data.get("summary", ""),
+            existing_articles
+        )
+    else:
+        related = []
+        print(f"[ContentWriter] 関連記事選定: スキップ（2026-03-31以降に自動有効化）")
     data["related_articles"] = related
 
     # リサーチ中の発見をログ保存（経験ベース投稿のネタ元）
-    try:
-        facts = _extract_interesting_facts(client, data.get("title", ""), data.get("content", ""))
-        if facts:
-            _save_research_log(data.get("title", ""), facts)
-    except Exception:
-        pass
+    # ENABLED = True にすると有効化（workers/content_writer.py の _FACT_EXTRACTION_ENABLED）
+    if _FACT_EXTRACTION_ENABLED:
+        try:
+            facts = _extract_interesting_facts(client, data.get("title", ""), data.get("content", ""))
+            if facts:
+                _save_research_log(data.get("title", ""), facts)
+        except Exception:
+            pass
+    else:
+        print(f"[ContentWriter] 事実抽出: スキップ（_FACT_EXTRACTION_ENABLED=False）")
 
     data["topic"] = topic
     data["created_at"] = datetime.now().isoformat()

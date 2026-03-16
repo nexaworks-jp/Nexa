@@ -872,8 +872,14 @@ def _evolve_sofia_character(client: anthropic.Anthropic, config: dict):
     print(f"[SelfImprover] ソフィア進化モジュール生成: {filename}")
 
 
+ENABLED = False  # 収益またはPVが出始めたら True に変更
+
+
 def run(config: dict, all_results: dict, memory: dict, weekly: bool = False) -> dict:
     """メイン実行関数"""
+    if not ENABLED:
+        print("[SelfImprover] 停止中（ENABLED=False）。収益/PVが出たら workers/self_improver.py の ENABLED を True に。")
+        return {}
     print("[SelfImprover] 自己改善分析を開始...")
     try:
         client = anthropic.Anthropic(api_key=config["anthropic_api_key"])

@@ -17,7 +17,7 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, note_researcher, diary_writer, mood_generator
+from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, diary_writer, mood_generator
 from publishers import note_publisher, x_publisher, crowdworks_publisher, gmail_outreach, line_notifier, obsidian_publisher, static_site_publisher
 import risk_manager
 
@@ -266,10 +266,24 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     today_mood = mood_generator.get_today_mood()
     mood_prompt = mood_generator.to_prompt(today_mood)
 
-    # Step 1: トレンド分析
-    print("\n[Step 1] トレンド分析...")
-    trends = trend_analyzer.analyze(config)
-    print(f"  → {', '.join(trends['topics'][:4])}")
+    # Step 1: トレンド分析（コンテンツ生成時のみAPI呼び出し）
+    if do_content:
+        print("\n[Step 1] トレンド分析...")
+        trends = trend_analyzer.analyze(config)
+        print(f"  → {', '.join(trends['topics'][:4])}")
+    else:
+        # 非コンテンツ時間帯はキャッシュを使用（API呼び出しなし）
+        _cache_path = os.path.join(os.path.dirname(__file__), "memory", "trends_cache.json")
+        if os.path.exists(_cache_path):
+            try:
+                with open(_cache_path, "r", encoding="utf-8") as f:
+                    trends = json.load(f)
+                print(f"\n[Step 1] トレンド分析: キャッシュ使用 ({trends.get('analyzed_at','')[:10]})")
+            except Exception:
+                trends = {"topics": [], "source": "skipped"}
+        else:
+            trends = {"topics": [], "source": "skipped"}
+        print(f"  → スキップ（非コンテンツ時間帯）")
 
     # Step 2: CEO判断（crowdworksは毎回、他はスケジュール依存）
     print("\n[Step 2] CEO判断...")
@@ -385,9 +399,11 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
             print(f"[Task: Diary] エラー: {e}")
 
 
-    # ソフィア日常つぶやき（毎実行30%の確率・1日2〜3本ランダム分散）
+    # ソフィア日常つぶやき（エンゲージメント最適時間帯のみ・JST 12/18/22 + コンテンツ時間）
+    # UTC: 3=JST12, 9=JST18, 13=JST22, 21=JST6(do_content)
+    _CASUAL_HOURS = {3, 9, 13, content_hour}
     import random as _random
-    if not dry_run and _random.random() < 0.30:
+    if not dry_run and hour in _CASUAL_HOURS and _random.random() < 0.60:
         print("\n[Task: Casual] ソフィア日常つぶやき生成...")
         try:
             import anthropic as _anthropic
@@ -416,12 +432,7 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
         if improve_result.get("updated_strategy"):
             strategy.update(improve_result["updated_strategy"])
         if weekly and not dry_run and improve_result.get("analysis"):
-            # noteリサーチ（類似アカウント調査・スタイル自動更新）
-            print("\n[Step 5b] noteリサーチ・市場分析...")
-            try:
-                note_researcher.run(config)
-            except Exception as e:
-                print(f"[Main] noteリサーチエラー: {e}")
+            # noteリサーチ: 削除済み（AI系クリエイター研究が必要になったら再実装）
 
             from apply_new_modules import apply_new_modules
             new_modules = apply_new_modules()

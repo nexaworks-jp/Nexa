@@ -338,9 +338,19 @@ def analyze(config: dict) -> dict:
     for c in candidates:
         source_usage[c["source"]] = source_usage.get(c["source"], 0) + 1
 
-    return {
+    result = {
         "topics": topics,
         "source": "multi",
         "source_counts": source_usage,
         "analyzed_at": datetime.now().isoformat()
     }
+
+    # 結果をキャッシュ保存（非コンテンツ時間帯のAPI呼び出し節約用）
+    cache_path = os.path.join(memory_dir, "trends_cache.json")
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(result, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+    return result
