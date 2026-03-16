@@ -62,16 +62,8 @@ def ceo_decide(client: anthropic.Anthropic, state: dict) -> dict:
     total_earnings = state["earnings"].get("total_earnings_jpy", 0)
     intensify = state["strategy"].get("intensify_channels", [])
 
-    # 収益が発生したチャネルを強化（self_improverが設定）
-    if intensify and total_earnings > 0:
-        tasks = list(set(["crowdworks"] + intensify))
-        return {"tasks": tasks, "reasoning": "収益チャネル強化", "intensity": "normal"}
-
-    # ルールベース判断
-    if iteration < 30:
-        tasks = ["crowdworks", "content"] if do_content_this_run(state) else ["crowdworks"]
-    else:
-        tasks = ["crowdworks", "content", "saas"]
+    # ルールベース判断（CrowdWorks停止中 → note/X に集中）
+    tasks = ["content"] if do_content_this_run(state) else []
 
     return {"tasks": tasks, "reasoning": "ルールベース判断", "intensity": "normal"}
 
@@ -281,7 +273,7 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
 
     # Step 2: CEO判断（crowdworksは毎回、他はスケジュール依存）
     print("\n[Step 2] CEO判断...")
-    forced_tasks = ["crowdworks"]
+    forced_tasks = []
     if do_content:
         forced_tasks.append("content")
 
@@ -324,21 +316,7 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
         else:
             print(f"[RiskManager] content スキップ: {reason}")
 
-    if "crowdworks" in tasks or "all" in tasks:
-        ok, reason = risk_manager.can_run("crowdworks", risk_state)
-        if ok:
-            try:
-                all_results["crowdworks"] = run_crowdworks_task(config, proposals_memory, dry_run)
-                cw_result = all_results["crowdworks"]
-                proposals_count = len(cw_result.get("proposals", []))
-                for _ in range(proposals_count):
-                    risk_state = risk_manager.record_proposal(risk_state)
-                risk_state = risk_manager.record_success(risk_state, "crowdworks")
-            except Exception as e:
-                risk_state = risk_manager.record_error(risk_state, "crowdworks", str(e))
-                print(f"[Main] crowdworksタスクエラー: {e}")
-        else:
-            print(f"[RiskManager] crowdworks スキップ: {reason}")
+    # CrowdWorks: 一時停止中（note/X集中フェーズ）
 
     # 成長マイルストーン投稿（10・50・100・以降100刻み）
     if do_content and not dry_run:
