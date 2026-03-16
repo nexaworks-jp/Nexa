@@ -234,40 +234,71 @@ def _content_to_html(text: str) -> str:
 
 def _fetch_gql_auth_token(session) -> str:
     """
-    note_gql_auth_token JWT をサーバーから取得する。
-    editor.note.com のJSが呼ぶエンドポイントを試行。
+    note_gql_auth_token JWT を取得する。
+    このJWTはeditor.note.comのJSが実行された後にしか発行されないため、
+    最終手段としてPlaywrightでJSを実行してクッキーを取得する。
     """
     # 既にクッキーにある場合はそのまま返す
     existing = next((c.value for c in session.cookies if c.name == "note_gql_auth_token"), "")
     if existing:
         return existing
 
-    candidates = [
-        ("GET",  "https://note.com/api/v2/token"),
-        ("POST", "https://note.com/api/v2/token"),
-        ("GET",  "https://note.com/api/v1/token"),
-        ("GET",  "https://note.com/api/v2/auth_token"),
-        ("GET",  "https://note.com/api/v2/users/current_user"),
-        ("GET",  "https://note.com/api/v1/sessions/me"),
-    ]
-    for method, url in candidates:
-        try:
-            r = session.request(method, url, timeout=10)
-            token = next((c.value for c in session.cookies if c.name == "note_gql_auth_token"), "")
-            if token:
-                print(f"[NoteAPI] note_gql_auth_token取得: {url}")
-                return token
-            if r.status_code == 200:
+    # Playwrightでeditor.note.comを開いてJWT取得（最も確実な方法）
+    try:
+        from playwright.sync_api import sync_playwright
+
+        # requestsセッションのクッキーをPlaywright形式に変換
+        pw_cookies = []
+        for c in session.cookies:
+            domain = c.domain or "note.com"
+            # Playwrightはドットなしのドメインを要求
+            pw_cookies.append({
+                "name": c.name,
+                "value": c.value,
+                "domain": domain.lstrip("."),
+                "path": c.path or "/",
+            })
+
+        if pw_cookies:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-blink-features=AutomationControlled",
+                        "--disable-dev-shm-usage",
+                    ]
+                )
+                context = browser.new_context(
+                    user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+                )
+                context.add_init_script("delete Object.getPrototypeOf(navigator).webdriver;")
+                context.add_cookies(pw_cookies)
+
+                page = context.new_page()
                 try:
-                    body = r.json()
-                    t = body.get("token") or body.get("data", {}).get("token", "")
-                    if t:
-                        print(f"[NoteAPI] note_gql_auth_token(body): {url}")
-                        return t
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                    # editor.note.comを開く→JSが実行されてnote_gql_auth_tokenが発行される
+                    page.goto("https://editor.note.com/notes/new", timeout=30000)
+                    page.wait_for_timeout(4000)  # JWT発行のJSを待つ
+                    all_cookies = context.cookies()
+                    token = next((c["value"] for c in all_cookies if c["name"] == "note_gql_auth_token"), "")
+                    if token:
+                        print(f"[NoteAPI] Playwright JWT取得成功: {token[:20]}...")
+                        # requestsセッションにも反映
+                        session.cookies.set("note_gql_auth_token", token, domain="note.com")
+                        return token
+                    else:
+                        print(f"[NoteAPI] Playwright JWT取得失敗（クッキー一覧: {[c['name'] for c in all_cookies[:10]]}）")
+                except Exception as e:
+                    print(f"[NoteAPI] Playwright JWT取得エラー: {e}")
+                finally:
+                    browser.close()
+    except ImportError:
+        print("[NoteAPI] playwright未インストール")
+    except Exception as e:
+        print(f"[NoteAPI] JWT取得エラー: {e}")
+
     return ""
 
 
