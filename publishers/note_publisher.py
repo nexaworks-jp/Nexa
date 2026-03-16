@@ -271,25 +271,29 @@ def _publish_via_playwright_fetch(session, title: str, content: str, hashtags: l
         context.add_cookies(pw_cookies)
         page = context.new_page()
 
-        # ネットワーク監視: JWTを発行しているURLを特定する
+        # ネットワーク監視: Set-CookieでJWT発行元を特定 + APIレスポンスを記録
+        api_responses = {}
         def on_response(response):
             sc = response.headers.get("set-cookie", "")
             if "note_gql_auth_token" in sc:
                 print(f"[NoteAPI-PW] JWT set-cookie from: {response.url}")
-            elif "note.com" in response.url and any(k in response.url for k in ("token", "auth", "session", "jwt")):
-                print(f"[NoteAPI-PW] 候補URL: {response.url} status={response.status}")
+            if "note.com/api/" in response.url and response.status < 400:
+                try:
+                    api_responses[response.url.split("?")[0]] = response.json()
+                except Exception:
+                    pass
         page.on("response", on_response)
 
-        # 全APIリクエストを監視してJWT発行元を特定
-        all_note_reqs = []
+        # APIリクエストのみ記録（静的アセット除外）
+        api_reqs = []
         def on_request(req):
-            if "note.com" in req.url:
-                all_note_reqs.append(f"{req.method} {req.url[:120]}")
+            url = req.url
+            if "note.com/api/" in url or ("note.com" in url and "_next" not in url and ".js" not in url and ".css" not in url and ".png" not in url):
+                api_reqs.append(f"{req.method} {url[:120]}")
         page.on("request", on_request)
 
         try:
             # note.com/notes/new から入る（自然なフロー）→ editor.note.com にリダイレクト
-            # このルートでnote_gql_auth_tokenが発行されると予想
             page.goto("https://note.com/notes/new", timeout=30000)
             # エディター要素またはタイムアウトまで待機
             try:
@@ -298,11 +302,24 @@ def _publish_via_playwright_fetch(session, title: str, content: str, hashtags: l
             except Exception:
                 page.wait_for_timeout(6000)
 
-            # JWT確認 + どんなAPIが叩かれたか記録
+            # JWT確認
             all_cookies = context.cookies()
             jwt_present = any(c["name"] == "note_gql_auth_token" for c in all_cookies)
             print(f"[NoteAPI-PW] JWT={'あり' if jwt_present else 'なし'} cookies={[c['name'] for c in all_cookies]}")
-            print(f"[NoteAPI-PW] note.com requests({len(all_note_reqs)}件): {all_note_reqs[:15]}")
+
+            # APIリクエスト一覧
+            print(f"[NoteAPI-PW] APIリクエスト({len(api_reqs)}件): {api_reqs}")
+
+            # current_user レスポンス内容（JWTがここに含まれているか確認）
+            for url, body in api_responses.items():
+                if "current_user" in url or "token" in url:
+                    print(f"[NoteAPI-PW] {url}: {str(body)[:400]}")
+
+            # document.cookie と localStorage を確認（JWTの格納場所特定）
+            doc_cookie = page.evaluate("() => document.cookie")
+            ls_data = page.evaluate("() => { try { return JSON.stringify(Object.fromEntries(Object.keys(localStorage).map(k=>[k, localStorage.getItem(k)]))).slice(0,500); } catch(e) { return String(e); } }")
+            print(f"[NoteAPI-PW] document.cookie: {doc_cookie[:300]}")
+            print(f"[NoteAPI-PW] localStorage: {ls_data[:300]}")
 
             # ブラウザのfetch()でAPI呼び出し（editor.note.com originで実行）
             result = page.evaluate("""
