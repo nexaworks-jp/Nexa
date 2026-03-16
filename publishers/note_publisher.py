@@ -313,11 +313,11 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
     if r2.status_code not in (200, 201):
         return {"success": False, "reason": f"Step2 failed: {r2.status_code}"}
 
-    # ── note_gql_auth_token 取得（PUTに必要）──
+    # ── note_gql_auth_token 取得（PUTにクッキーとして必要）──
+    # ブラウザと同じくクッキーとして送る（Bearerヘッダーではない）
     gql_token = _fetch_gql_auth_token(session)
     if gql_token:
         session.cookies.set("note_gql_auth_token", gql_token, domain="note.com")
-        session.headers["Authorization"] = f"Bearer {gql_token}"
         print(f"[NoteAPI] note_gql_auth_token設定: {gql_token[:20]}...")
     else:
         print("[NoteAPI] note_gql_auth_token なし（_note_session_v5のみで PUT 試行）")

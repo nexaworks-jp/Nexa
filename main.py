@@ -316,6 +316,8 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     # パイプラインリトライ（毎回実行・コンテンツ生成不要）
     if not dry_run:
         try:
+            ps = note_publisher.get_pipeline_status()
+            print(f"[Pipeline] pending={ps['pending']} posted={ps['posted']} give_up={ps['give_up']} total={ps['total']}")
             note_cfg = config.get("note", {})
             retried = note_publisher._retry_pending_drafts(
                 note_cfg.get("email", ""),
