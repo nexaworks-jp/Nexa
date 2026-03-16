@@ -232,15 +232,53 @@ def _content_to_html(text: str) -> str:
     return "".join(parts) or "<p></p>"
 
 
+def _fetch_gql_auth_token(session) -> str:
+    """
+    note_gql_auth_token JWT をサーバーから取得する。
+    editor.note.com のJSが呼ぶエンドポイントを試行。
+    """
+    # 既にクッキーにある場合はそのまま返す
+    existing = next((c.value for c in session.cookies if c.name == "note_gql_auth_token"), "")
+    if existing:
+        return existing
+
+    candidates = [
+        ("GET",  "https://note.com/api/v2/token"),
+        ("POST", "https://note.com/api/v2/token"),
+        ("GET",  "https://note.com/api/v1/token"),
+        ("GET",  "https://note.com/api/v2/auth_token"),
+        ("GET",  "https://note.com/api/v2/users/current_user"),
+        ("GET",  "https://note.com/api/v1/sessions/me"),
+    ]
+    for method, url in candidates:
+        try:
+            r = session.request(method, url, timeout=10)
+            token = next((c.value for c in session.cookies if c.name == "note_gql_auth_token"), "")
+            if token:
+                print(f"[NoteAPI] note_gql_auth_token取得: {url}")
+                return token
+            if r.status_code == 200:
+                try:
+                    body = r.json()
+                    t = body.get("token") or body.get("data", {}).get("token", "")
+                    if t:
+                        print(f"[NoteAPI] note_gql_auth_token(body): {url}")
+                        return t
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    return ""
+
+
 def _create_and_publish(session, title: str, content: str, hashtags: list, price: int, user_key: str) -> dict:
     """
     ブラウザのDevToolsで確認した実際のAPIフローで投稿:
     1. POST /api/v1/text_notes          → 空の下書き作成 → note_id 取得
-    2. POST /api/v1/draft_save?id=...   → 本文(free_body=HTML)・タイトル保存
-    3. PUT  /api/v1/text_notes/{id}     → 全フィールドで公開（200 OK）
+    2. POST /api/v1/text_notes/draft_save?id=...   → 本文(free_body=HTML)・タイトル保存
+    3. PUT  /api/v1/text_notes/{id}     → 公開（200 OK）
     """
     free_body = _content_to_html(content)
-    hashtag_list = [{"name": t} for t in hashtags[:10]]
 
     # ── Step 1: 空の下書き作成 ──
     r1 = session.post(
@@ -275,50 +313,58 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
     if r2.status_code not in (200, 201):
         return {"success": False, "reason": f"Step2 failed: {r2.status_code}"}
 
-    # Step1/2 のレスポンスから XSRF-TOKEN を取得して PUT に付ける
-    xsrf_token = ""
-    for c in session.cookies:
-        if c.name.upper() in ("XSRF-TOKEN", "X-XSRF-TOKEN", "CSRF-TOKEN", "_XSRF"):
-            xsrf_token = c.value
-            break
-    if xsrf_token:
-        session.headers["X-XSRF-TOKEN"] = xsrf_token
-        print(f"[NoteAPI] XSRF-TOKEN取得: {xsrf_token[:16]}...")
+    # ── note_gql_auth_token 取得（PUTに必要）──
+    gql_token = _fetch_gql_auth_token(session)
+    if gql_token:
+        session.cookies.set("note_gql_auth_token", gql_token, domain="note.com")
+        session.headers["Authorization"] = f"Bearer {gql_token}"
+        print(f"[NoteAPI] note_gql_auth_token設定: {gql_token[:20]}...")
     else:
-        print("[NoteAPI] XSRF-TOKEN なし（CSRFなしで PUT 試行）")
+        print("[NoteAPI] note_gql_auth_token なし（_note_session_v5のみで PUT 試行）")
 
-    # ── Step 3: PUT で公開（ブラウザ実測ペイロードに準拠） ──
-    publish_payload = {
+    # ── Step 3: PUT で公開（最小ペイロード → 成功しなければ拡張ペイロード）──
+    # まず最小ペイロードで試行（422の原因を特定しやすくする）
+    minimal_payload = {
         "name": title,
         "free_body": free_body,
         "pay_body": "",
         "price": price,
-        "hashtags": [t for t in hashtags[:10]],  # 文字列配列
+        "hashtags": list(hashtags[:10]),
         "body_length": len(content),
         "index": False,
-        "is_refund": False,
-        "limited": False,
         "send_notifications_flag": True,
-        "separator": None,
-        "author_ids": [],
-        "circle_permissions": [],
-        "disable_comment": False,
-        "discount_campaigns": [],
-        "exclude_ai_learning_reward": False,
-        "exclude_from_creator_top": False,
-        "image_keys": [],
-        "magazine_ids": [],
-        "magazine_keys": [],
-        "lead_form": {"is_active": False, "consent_url": ""},
-        "line_add_friend": {"is_active": False, "keyword": "", "add_friend_url": ""},
-        "line_add_friend_access_token": "",
     }
     r3 = session.put(
         f"https://note.com/api/v1/text_notes/{note_id}",
-        json=publish_payload,
+        json=minimal_payload,
         timeout=30,
     )
-    print(f"[NoteAPI] Step3 公開(PUT): {r3.status_code} {r3.text[:200]}")
+    print(f"[NoteAPI] Step3 公開(PUT/minimal): {r3.status_code} {r3.text[:400]}")
+
+    if r3.status_code not in (200, 201):
+        # 拡張ペイロードで再試行
+        full_payload = {
+            **minimal_payload,
+            "is_refund": False,
+            "limited": False,
+            "separator": None,
+            "author_ids": [],
+            "circle_permissions": [],
+            "disable_comment": False,
+            "discount_campaigns": [],
+            "exclude_ai_learning_reward": False,
+            "exclude_from_creator_top": False,
+            "image_keys": [],
+            "magazine_ids": [],
+            "magazine_keys": [],
+        }
+        r3 = session.put(
+            f"https://note.com/api/v1/text_notes/{note_id}",
+            json=full_payload,
+            timeout=30,
+        )
+        print(f"[NoteAPI] Step3 公開(PUT/full): {r3.status_code} {r3.text[:400]}")
+
     if r3.status_code in (200, 201):
         d3 = r3.json().get("data", r3.json())
         note_url = (
@@ -328,7 +374,7 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
         print(f"[NoteAPI] 投稿成功: {note_url}")
         return {"success": True, "url": note_url, "title": title, "is_draft": False}
 
-    return {"success": False, "reason": f"Step3 PUT failed: {r3.status_code} {r3.text[:300]}"}
+    return {"success": False, "reason": f"Step3 PUT failed: {r3.status_code} {r3.text[:400]}"}
 
 
 # ==================== 方法1: セッションクッキーで直接API投稿（最優先） ====================
@@ -400,12 +446,6 @@ def api_post_with_session_cookie(article: dict) -> dict:
             user_key = m.group(1)
 
         print(f"[NoteAPI-Session] CSRF={'あり' if csrf_token else 'なし'} user={user_key or '不明'} session={session_cookie['value'][:8]}...")
-
-        # editor.note.com にアクセスして note_gql_auth_token を取得
-        # ブラウザ実測: PUTリクエストに note_gql_auth_token が必要
-        editor_resp = session.get("https://editor.note.com/notes/new", timeout=15)
-        gql_token = next((c.value for c in session.cookies if c.name == "note_gql_auth_token"), "")
-        print(f"[NoteAPI-Session] note_gql_auth_token={'あり' if gql_token else 'なし'}")
 
         # Origin/Referer を editor.note.com に変更（ブラウザ実測値に合わせる）
         session.headers.update({
@@ -525,10 +565,6 @@ def api_post(article: dict, email: str, password: str) -> dict:
             if "csrf" in c.name.lower() or "xsrf" in c.name.lower():
                 session.headers["X-CSRF-Token"] = c.value
 
-        # editor.note.com にアクセスして note_gql_auth_token を取得
-        session.get("https://editor.note.com/notes/new", timeout=15)
-        gql_token = next((c.value for c in session.cookies if c.name == "note_gql_auth_token"), "")
-        print(f"[NoteAPI] note_gql_auth_token={'あり' if gql_token else 'なし'}")
         session.headers.update({
             "Origin": "https://editor.note.com",
             "Referer": "https://editor.note.com/",
