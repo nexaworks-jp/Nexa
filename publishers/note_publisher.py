@@ -280,20 +280,29 @@ def _publish_via_playwright_fetch(session, title: str, content: str, hashtags: l
                 print(f"[NoteAPI-PW] 候補URL: {response.url} status={response.status}")
         page.on("response", on_response)
 
+        # 全APIリクエストを監視してJWT発行元を特定
+        all_note_reqs = []
+        def on_request(req):
+            if "note.com" in req.url:
+                all_note_reqs.append(f"{req.method} {req.url[:120]}")
+        page.on("request", on_request)
+
         try:
-            # editor.note.comを開いてJSを実行させる
-            page.goto("https://editor.note.com/notes/new", timeout=30000)
+            # note.com/notes/new から入る（自然なフロー）→ editor.note.com にリダイレクト
+            # このルートでnote_gql_auth_tokenが発行されると予想
+            page.goto("https://note.com/notes/new", timeout=30000)
             # エディター要素またはタイムアウトまで待機
             try:
-                page.wait_for_selector('[contenteditable="true"]', timeout=8000)
+                page.wait_for_selector('[contenteditable="true"]', timeout=10000)
                 print("[NoteAPI-PW] エディター検出")
             except Exception:
-                page.wait_for_timeout(5000)
+                page.wait_for_timeout(6000)
 
-            # JWT確認
+            # JWT確認 + どんなAPIが叩かれたか記録
             all_cookies = context.cookies()
             jwt_present = any(c["name"] == "note_gql_auth_token" for c in all_cookies)
             print(f"[NoteAPI-PW] JWT={'あり' if jwt_present else 'なし'} cookies={[c['name'] for c in all_cookies]}")
+            print(f"[NoteAPI-PW] note.com requests({len(all_note_reqs)}件): {all_note_reqs[:15]}")
 
             # ブラウザのfetch()でAPI呼び出し（editor.note.com originで実行）
             result = page.evaluate("""
@@ -391,15 +400,6 @@ def _create_and_publish(session, title: str, content: str, hashtags: list, price
     print(f"[NoteAPI] Step2 下書き保存: {r2.status_code} {r2.text[:150]}")
     if r2.status_code not in (200, 201):
         return {"success": False, "reason": f"Step2 failed: {r2.status_code}"}
-
-    # ── note_gql_auth_token 取得（PUTにクッキーとして必要）──
-    # ブラウザと同じくクッキーとして送る（Bearerヘッダーではない）
-    gql_token = _fetch_gql_auth_token(session)
-    if gql_token:
-        session.cookies.set("note_gql_auth_token", gql_token, domain="note.com")
-        print(f"[NoteAPI] note_gql_auth_token設定: {gql_token[:20]}...")
-    else:
-        print("[NoteAPI] note_gql_auth_token なし（_note_session_v5のみで PUT 試行）")
 
     # ── Step 3: PUT で公開（最小ペイロード → 成功しなければ拡張ペイロード）──
     # まず最小ペイロードで試行（422の原因を特定しやすくする）
