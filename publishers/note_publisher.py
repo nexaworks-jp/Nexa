@@ -129,6 +129,11 @@ def _retry_pending_drafts(email: str, password: str) -> int:
         result = api_post_with_session_cookie(article)
         if not result.get("success") and email and password:
             result = api_post(article, email, password)
+        # API（fetch/requests）はnote_gql_auth_tokenが取れないため常に422になる
+        # → Playwright UIで実際のブラウザ操作（JWTはブラウザJS内部で処理）
+        if not result.get("success") and email and password:
+            print(f"[NotePublisher] API失敗 → Playwright UI投稿試行")
+            result = auto_post_with_playwright(article, email, password)
 
         item["retry_count"] = item.get("retry_count", 0) + 1
         updated = True
