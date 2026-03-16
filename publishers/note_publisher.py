@@ -926,63 +926,58 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
 
             page.wait_for_timeout(500)
 
+            # ========== 本文エリアにフォーカス（Tab で移動） ==========
+            page.keyboard.press("Tab")
+            page.wait_for_timeout(500)
+
             # ========== 目次挿入 ==========
             # スラッシュコマンド /目次 で目次ブロックを挿入してから本文を入力する
+            # ※ 本文エリアへのフォーカス後・本文ペースト前に実行する
+            toc_inserted = False
             try:
-                # 本文エリアをクリックしてフォーカス
-                body_editors = page.evaluate("""() => {
-                    const eds = document.querySelectorAll('[contenteditable="true"]');
-                    for (const ed of eds) {
-                        if (ed.getBoundingClientRect().height > 100) return true;
-                    }
-                    return false;
+                page.keyboard.type("/")
+                page.wait_for_timeout(1000)
+                # メニューが出たか確認（ProseMirrorのスラッシュメニューはrole="listbox"等）
+                menu_visible = page.evaluate("""() => {
+                    const sel = '[role="listbox"], [role="menu"], [class*="slash"], [class*="command"], [class*="popup"]';
+                    const el = document.querySelector(sel);
+                    return !!(el && el.getBoundingClientRect().height > 0);
                 }""")
-                if body_editors:
-                    # 大きいcontenteditable領域をクリック
-                    page.evaluate("""() => {
-                        const eds = document.querySelectorAll('[contenteditable="true"]');
-                        for (const ed of eds) {
-                            if (ed.getBoundingClientRect().height > 100) { ed.focus(); ed.click(); return; }
-                        }
-                    }""")
-                    page.wait_for_timeout(300)
-                    # /目次 と入力してスラッシュメニューを呼び出す
-                    page.keyboard.type("/")
+                if menu_visible:
+                    page.keyboard.type("目次")
+                    page.wait_for_timeout(500)
+                    page.keyboard.press("Enter")
                     page.wait_for_timeout(800)
-                    # メニューが出たか確認（ProseMirrorのスラッシュメニューはrole="listbox"等）
-                    menu_visible = page.evaluate("""() => {
-                        const sel = '[role="listbox"], [role="menu"], [class*="slash"], [class*="command"]';
-                        const el = document.querySelector(sel);
-                        return !!(el && el.getBoundingClientRect().height > 0);
-                    }""")
-                    if menu_visible:
-                        page.keyboard.type("目次")
-                        page.wait_for_timeout(500)
-                        page.keyboard.press("Enter")
-                        page.wait_for_timeout(500)
-                        print("[NotePublisher] 目次挿入完了")
-                    else:
-                        # メニューが出なかったら / を消してスキップ
-                        page.keyboard.press("Backspace")
-                        print("[NotePublisher] スラッシュメニュー非表示のため目次スキップ")
+                    toc_inserted = True
+                    print("[NotePublisher] 目次挿入完了")
+                else:
+                    # メニューが出なかったら / を消してスキップ
+                    page.keyboard.press("Backspace")
+                    print("[NotePublisher] スラッシュメニュー非表示のため目次スキップ")
             except Exception as e:
                 print(f"[NotePublisher] 目次挿入スキップ: {e}")
 
             # ========== 本文入力 ==========
             html_body = _content_to_html(content)
             body_filled = False
-            # HTML貼り付け → plain text insertText の順で試みる
+            # 本文エリアにHTMLをペースト（selectAllは行わない: 目次ブロックを上書きしないため）
             body_filled = page.evaluate("""([htmlContent, textContent]) => {
                 const editors = document.querySelectorAll('[contenteditable="true"]');
                 let bodyEditor = null;
                 for (const ed of editors) {
                     const rect = ed.getBoundingClientRect();
-                    if (rect.height > 100) { bodyEditor = ed; break; }
+                    if (rect.height > 50) { bodyEditor = ed; break; }
                 }
                 if (!bodyEditor) bodyEditor = editors[editors.length - 1];
                 if (!bodyEditor) return false;
                 bodyEditor.focus();
-                document.execCommand('selectAll', false, null);
+                // カーソルを末尾に移動（目次ブロックの後ろに挿入）
+                const range = document.createRange();
+                range.selectNodeContents(bodyEditor);
+                range.collapse(false);
+                const sel = window.getSelection();
+                sel.removeAllRanges();
+                sel.addRange(range);
                 // HTML DataTransfer paste（ProseMirrorはtext/htmlを処理する）
                 try {
                     const dt = new DataTransfer();
