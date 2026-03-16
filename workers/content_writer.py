@@ -227,7 +227,7 @@ def check_consistency(client: anthropic.Anthropic, title: str, content: str) -> 
     return {"passed": True, "issues": "", "corrected_title": title, "corrected_content": content}
 
 
-def create_note_article(client: anthropic.Anthropic, topic: str, published_topics: list, existing_articles: list = None) -> dict:
+def create_note_article(client: anthropic.Anthropic, topic: str, published_topics: list, existing_articles: list = None, published_note_articles: list = None) -> dict:
     """
     AI解説記事を生成する（ファクトチェック付き）
     戻り値: { "title": str, "content": str, "price": int, "hashtags": list }
@@ -309,6 +309,24 @@ def create_note_article(client: anthropic.Anthropic, topic: str, published_topic
     sophia_persona = load_sophia_persona("note")
     sophia_learnings = load_sophia_learnings()
 
+    # 既存記事リンク指示（記事が3件以上あるときのみ有効化）
+    internal_link_hint = ""
+    if published_note_articles and len(published_note_articles) >= 3:
+        articles_list = "\n".join(
+            f'- 「{a["title"]}」 → {a["url"]}'
+            for a in published_note_articles[-20:]
+            if a.get("url") and "note.com" in a.get("url", "")
+        )
+        if articles_list:
+            internal_link_hint = f"""
+【関連記事の内部リンク（重要）】
+以下の既存記事と関連する専門用語を本文で説明したとき、その説明段落の直後の行にURLのみを単独で挿入してください。
+note.comはURLを単独行に置くと自動でカード表示します。
+挿入は最大2箇所まで・関連性が明確な場合のみ（無理に入れない）。
+
+{articles_list}
+"""
+
     response = client.messages.create(
         model="claude-haiku-4-5-20251001",
         max_tokens=4000,
@@ -326,6 +344,7 @@ def create_note_article(client: anthropic.Anthropic, topic: str, published_topic
 避けるべき最近のトピック: {avoid}
 {seo_hint}
 {article_policy}
+{internal_link_hint}
 
 【文字数の目安】
 - 基本: 2000〜3000文字（本文のみ、見出しを除く）
@@ -661,7 +680,8 @@ def generate_content_batch(config: dict, trends: dict, published_memory: dict, m
             # 静的サイトの既存記事を渡す（関連記事選定用）
             from publishers.static_site_publisher import load_articles_data
             existing = load_articles_data()
-            article = create_note_article(client, topic, published_topics, existing)
+            note_articles = published_memory.get("note_articles", [])
+            article = create_note_article(client, topic, published_topics, existing, note_articles)
             results["note_articles"].append(article)
             # トピック履歴に追加（重複防止用）
             _append_topic_history(article.get("title", ""))

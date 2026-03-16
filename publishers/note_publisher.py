@@ -180,6 +180,8 @@ def _retry_pending_drafts(email: str, password: str) -> int:
             item["url"] = result.get("url", "")
             print(f"[NotePublisher] 下書き再投稿成功: {item['title'][:30]}")
             success += 1
+            # published.json に記録（内部リンク生成に使用）
+            _record_published(item["title"], result.get("url", ""), item.get("hashtags", []))
         else:
             print(f"[NotePublisher] 下書き再投稿失敗({item['retry_count']}回目): {item['title'][:30]}")
         break  # 1実行1件のみ
@@ -187,6 +189,28 @@ def _retry_pending_drafts(email: str, password: str) -> int:
     if updated:
         _save_pipeline(pipeline)
     return success
+
+
+def _record_published(title: str, url: str, hashtags: list):
+    """投稿成功した記事をmemory/published.jsonのnote_articlesに追記（内部リンク用）"""
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "memory", "published.json")
+    try:
+        data = {}
+        if os.path.exists(path):
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        articles = data.setdefault("note_articles", [])
+        if not any(a.get("url") == url for a in articles):
+            articles.append({
+                "title": title,
+                "url": url,
+                "hashtags": hashtags,
+                "published_at": datetime.now().isoformat(),
+            })
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[NotePublisher] published.json更新エラー: {e}")
 
 
 def get_pipeline_status() -> dict:
