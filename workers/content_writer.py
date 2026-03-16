@@ -392,6 +392,23 @@ difficultyの基準（1〜5）:
             "summary": f"{topic}について解説します。"
         }
 
+    # contentがJSONコードブロック形式になっていたら展開する
+    # （Haikuが "content": "```json\n{...}\n```" と返すケースの修正）
+    import re as _re_cw
+    c = data.get("content", "")
+    c_stripped = c.strip()
+    if c_stripped.startswith("```json") or (c_stripped.startswith("```") and c_stripped[3:].lstrip().startswith("{")):
+        try:
+            inner = _re_cw.sub(r'^```json?\s*', '', c_stripped)
+            inner = _re_cw.sub(r'\s*```\s*$', '', inner.strip())
+            nested = json.loads(inner)
+            nested_content = nested.get("content", "")
+            if nested_content:
+                data["content"] = nested_content.replace("\\n", "\n").replace("\\t", "\t")
+                print(f"[ContentWriter] ネストJSONブロック展開: {len(data['content'])}文字")
+        except Exception:
+            pass
+
     # ファクトチェック（最大2回・丁寧に）
     for attempt in range(2):
         print(f"[ContentWriter] ファクトチェック中（{attempt + 1}回目）: {data.get('title', '')}")

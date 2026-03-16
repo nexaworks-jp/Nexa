@@ -118,6 +118,24 @@ def _retry_pending_drafts(email: str, password: str) -> int:
             updated = True
             break
 
+        # JSONコードブロック形式の本文を検出して実際の内容を抽出
+        # （content_writerがJSONコードブロックをcontentとして保存してしまうケースに対応）
+        stripped = body.lstrip()
+        if stripped.startswith("```json") or stripped.startswith("```\n{"):
+            try:
+                import json as _json2
+                # ```json ... ``` の中のJSONを取り出す
+                inner = _re.sub(r'^```json?\s*', '', stripped)
+                inner = _re.sub(r'\s*```\s*$', '', inner.strip())
+                parsed = _json2.loads(inner)
+                extracted = parsed.get("content", "")
+                if extracted:
+                    # \n エスケープを実際の改行に
+                    body = extracted.replace("\\n", "\n").replace("\\t", "\t")
+                    print(f"[NotePublisher] JSONコードブロック形式を変換: {len(body)}文字")
+            except Exception:
+                pass
+
         article = {
             "title": item["title"],
             "content": body,
@@ -937,8 +955,35 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
                 except Exception:
                     continue
 
-            page.wait_for_timeout(4000)
+            # 公開後のリダイレクトを待つ（note.comへ遷移するまで最大10秒）
+            for _ in range(10):
+                page.wait_for_timeout(1000)
+                if "note.com" in page.url and "editor.note.com" not in page.url:
+                    break
             current_url = page.url
+            # editor URLのままなら note_key を抽出して実URLを構築
+            if "editor.note.com" in current_url:
+                m = _re.search(r'/notes/([^/]+)', current_url)
+                if m:
+                    note_key = m.group(1)
+                    # ページからurlnameを取得
+                    try:
+                        urlname = page.evaluate("""() => {
+                            const nd = document.getElementById('__NEXT_DATA__');
+                            if (nd) {
+                                try {
+                                    const d = JSON.parse(nd.textContent);
+                                    return d.props?.pageProps?.currentUser?.urlname || '';
+                                } catch(e) {}
+                            }
+                            return '';
+                        }""")
+                    except Exception:
+                        urlname = ""
+                    if urlname:
+                        current_url = f"https://note.com/{urlname}/n/{note_key}"
+                    else:
+                        current_url = f"https://note.com/n/{note_key}"
             print(f"[NotePublisher] 投稿完了: {current_url}")
             browser.close()
 
