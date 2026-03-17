@@ -96,30 +96,22 @@ def run_content_task(config, trends, published, dry_run, mood_prompt: str = ""):
     # 3. note.com投稿（自動 or 下書き保存）
     note_results = note_publisher.publish(config, articles, dry_run)
 
-    # note自動投稿が成功したらXの導線ポストに実URLを差し込む
-    x_posts = generated.get("x_posts", [])
-    for note_result in note_results:
-        note_url = note_result.get("url", "")
-        if note_url and not note_result.get("is_draft"):
-            for post in x_posts:
-                if post.get("funnel_type") == "note" and "[noteリンク]" in post.get("text", ""):
-                    post["text"] = post["text"].replace("[noteリンク]", note_url)
-                    break
-
-    # 感想ポスト（記事を書いたソフィアの本音 - 宣伝ではなく感情）
-    if articles and not dry_run:
+    # note公開済み記事（URL確定）を収集して最適な導線ポストを1本生成
+    x_posts = []
+    published_for_x = [
+        {"title": a.get("title", ""), "summary": a.get("summary", ""), "url": r.get("url", "")}
+        for a, r in zip(articles, note_results)
+        if r.get("success") and not r.get("is_draft") and r.get("url")
+    ]
+    if published_for_x and not dry_run:
         api_key = config.get("anthropic_api_key", "")
         if api_key:
             import anthropic as _anthropic
             _client = _anthropic.Anthropic(api_key=api_key)
-            for article in articles[:1]:  # 1記事につき1感想
-                try:
-                    reflection = content_writer.create_reflection_post(_client, article, mood_prompt)
-                    if reflection.get("text"):
-                        x_posts.append(reflection)
-                        print(f"[Task: Content] 感想ポスト生成: {reflection['text'][:40]}...")
-                except Exception as e:
-                    print(f"[Task: Content] 感想ポスト生成エラー: {e}")
+            post = content_writer.create_best_note_post(_client, published_for_x, mood_prompt)
+            if post.get("text"):
+                x_posts.append(post)
+                print(f"[Task: Content] note導線ポスト生成: {post['text'][:40]}...")
 
     # 4. X投稿
     x_results = x_publisher.publish(config, x_posts, dry_run)
@@ -384,8 +376,9 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
             except Exception as e:
                 print(f"[Sofia Evolution] {os.path.basename(_mod_path)} エラー: {e}")
 
-    # ソフィア日記（朝6時JST = content_hour のみ・1日1回）
-    if do_content and not dry_run:
+    # ソフィア日記（昼12時JST = UTC3 のみ・1日1回）
+    # ※ 6JSTはnote導線・感想ポストで90分クールダウンが発生するため12JSTに移動
+    if hour == 3 and not dry_run:
         print("\n[Task: Diary] ソフィア日記生成...")
         try:
             diary_post = diary_writer.generate_diary(config, {
@@ -399,9 +392,9 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
             print(f"[Task: Diary] エラー: {e}")
 
 
-    # ソフィア日常つぶやき（エンゲージメント最適時間帯のみ・JST 12/18/22 + コンテンツ時間）
-    # UTC: 3=JST12, 9=JST18, 13=JST22, 21=JST6(do_content)
-    _CASUAL_HOURS = {3, 9, 13, content_hour}
+    # ソフィア日常つぶやき（JST 15/18/21・日記と被らないよう12時を除外）
+    # UTC: 6=JST15, 9=JST18, 12=JST21
+    _CASUAL_HOURS = {6, 9, 12}
     import random as _random
     if not dry_run and hour in _CASUAL_HOURS and _random.random() < 0.60:
         print("\n[Task: Casual] ソフィア日常つぶやき生成...")

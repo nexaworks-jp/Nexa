@@ -65,7 +65,7 @@ jobs:
             "settings": {
               "dry_run": false,
               "note_post_per_day": 4,
-              "x_post_per_day": 4,
+              "x_post_per_day": 1,
               "note_auto_post": true,
               "primary_niche": "AI活用術・副業・節約",
               "language": "ja"
@@ -94,13 +94,14 @@ jobs:
             sleep $DELAY
           fi
 
-      - name: Run social learning (Sofia - 6JST only)
+      - name: Run social learning (Sofia - Monday 6JST only)
         run: |
           HOUR=$(date -u +%H)
-          if [ "$HOUR" = "21" ] || [ "${{ github.event.inputs.force_content }}" = "true" ]; then
+          DOW=$(date -u +%u)  # 1=月曜〜7=日曜
+          if [ "$DOW" = "1" ] && [ "$HOUR" = "21" ] || [ "${{ github.event.inputs.force_content }}" = "true" ]; then
             python3 -c "import json, sys; sys.path.insert(0, '.'); from workers import social_learner; config = json.load(open('config.json')); social_learner.run(config)"
           else
-            echo "Social learning runs at 6 JST (21 UTC). Current: ${HOUR} UTC. Skipping."
+            echo "Social learning runs on Monday 6 JST (21 UTC). Current: DOW=${DOW} ${HOUR} UTC. Skipping."
           fi
 
       - name: Run AI Company

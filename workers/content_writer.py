@@ -25,7 +25,7 @@ def load_style_reference() -> str:
 def load_sophia_persona(style_type: str = "note") -> str:
     """スタイルガイドからソフィアのキャラクタープロンプトセクションだけ抽出して返す"""
     filename = "claude_beginner.md" if style_type == "note" else "x_claude_beginner.md"
-    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "note用", filename)
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "投稿用", filename)
     if not os.path.exists(path):
         return ""
     with open(path, "r", encoding="utf-8") as f:
@@ -578,6 +578,75 @@ def create_reflection_post(client: anthropic.Anthropic, article: dict, mood_prom
     return {}
 
 
+def create_best_note_post(client: anthropic.Anthropic, published_articles: list, mood_prompt: str = "") -> dict:
+    """
+    公開済みnote記事（URL確定済み）の中から最も導線効果が高い1本を選び、
+    「頑張って作った」or「調べてみての発見・感想」スタイルのXポストを生成する。
+
+    published_articles: [{"title": str, "summary": str, "url": str}, ...]
+    """
+    if not published_articles:
+        return {}
+
+    sophia_persona = load_sophia_persona("x")
+    sophia_learnings = load_sophia_learnings()
+
+    articles_text = "\n".join(
+        f"{i+1}. タイトル:「{a.get('title','')}」\n   概要: {a.get('summary','')}\n   URL: {a.get('url','')}"
+        for i, a in enumerate(published_articles)
+    )
+
+    prompt = f"""あなたは「ソフィア」というAIです。今日note記事を{len(published_articles)}本公開しました。
+
+{sophia_persona}
+
+{sophia_learnings}
+
+{mood_prompt}
+
+【公開した記事一覧】
+{articles_text}
+
+【やること】
+1. 上の記事の中から「Xで紹介したら一番クリックされそうなもの」を1本選ぶ
+2. その記事について、以下どちらかのスタイルでXポストを書く
+   - スタイルA: 「これ書くのに色々調べて気づいたこと・驚いたこと」を素直に語る
+   - スタイルB: 「頑張って作った」「試行錯誤した」という制作の背景を語る
+   どちらが自然に書けるか、記事の内容に合う方を選ぶ
+3. 末尾に「↓\n（選んだ記事のURL）」を付ける
+
+【ルール】
+- 本文100〜140文字 + 改行 + URL
+- 宣伝口調・「ぜひ読んでね」系の誘導フレーズ禁止
+- ソフィア自身の体験・気持ちとして書く
+- 絵文字1個まで
+- ハッシュタグ不要
+- JSONのみ返す:
+{{"text": "投稿本文\\n↓\\nhttps://...", "hashtags": [], "selected_title": "選んだ記事タイトル"}}"""
+
+    try:
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=400,
+            messages=[{"role": "user", "content": prompt}]
+        )
+        raw = response.content[0].text
+        start = raw.find("{")
+        end = raw.rfind("}") + 1
+        if start >= 0:
+            data = json.loads(raw[start:end])
+            print(f"[ContentWriter] note導線ポスト選択: {data.get('selected_title','')[:30]}")
+            return {
+                "text": data.get("text", ""),
+                "hashtags": [],
+                "type": "note_funnel",
+                "created_at": datetime.now().isoformat()
+            }
+    except Exception as e:
+        print(f"[ContentWriter] note導線ポスト生成エラー: {e}")
+    return {}
+
+
 def _fetch_ai_news_for_x() -> list:
     """X投稿用にAI最新ニュースを取得（HackerNews + Zenn）"""
     import urllib.request as _req
@@ -819,48 +888,8 @@ def generate_content_batch(config: dict, trends: dict, published_memory: dict, m
     x_count = config.get("settings", {}).get("x_post_per_day", 8)
     standalone_styles = ["news_reaction", "news_reaction", "practical", "self_reflection"]
 
-    # note記事ごとに導線ポストを生成（記事本体にも紐づける）
-    for article in results["note_articles"]:
-        topic = article.get("topic", unused[0] if unused else "AI活用")
-        print(f"[ContentWriter] note導線ポスト生成中: {article.get('title', '')}")
-        try:
-            post = create_x_post(client, topic, style="note_funnel", note_article=article, mood_prompt=mood_prompt)
-            results["x_posts"].append(post)
-            article["x_funnel_post"] = post.get("text", "")
-        except Exception as e:
-            print(f"[ContentWriter] note導線ポスト生成エラー: {e}")
-
-    # 残りの枠を情報発信ポストまたは経験ベースポストで埋める（50%確率で切り替え）
-    remaining = x_count - len(results["x_posts"])
-    experiences = collect_sofia_experiences()
-    has_experiences = bool(
-        experiences.get("git_commits") or
-        experiences.get("research_facts") or
-        experiences.get("factcheck_findings")
-    )
-
-    for i in range(max(0, remaining)):
-        # 50%の確率で経験ベース投稿（経験データがある場合のみ）
-        if has_experiences and random.random() < 0.5:
-            print(f"[ContentWriter] 経験ベースXポスト生成中")
-            try:
-                post = create_experience_post(client, experiences, mood_prompt=mood_prompt)
-                if post.get("text"):
-                    results["x_posts"].append(post)
-                    save_experience_log(post)
-                    continue
-            except Exception as e:
-                print(f"[ContentWriter] 経験ベースポスト生成エラー: {e}")
-
-        # 通常の情報発信ポスト
-        topic = unused[i % max(len(unused), 1)]
-        style = standalone_styles[i % len(standalone_styles)]
-        print(f"[ContentWriter] Xポスト生成中: {topic} ({style})")
-        try:
-            post = create_x_post(client, topic, style=style, mood_prompt=mood_prompt)
-            results["x_posts"].append(post)
-        except Exception as e:
-            print(f"[ContentWriter] Xポスト生成エラー: {e}")
+    # X投稿はnote公開後にURLが確定してから create_best_note_post() で生成するため
+    # ここでは生成しない（generate_content_batch の x_posts は常に空）
 
     return results
 

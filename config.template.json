@@ -27,7 +27,7 @@
     "dry_run": false,
     "note_post_per_day": 4,
     "note_auto_post": false,
-    "x_post_per_day": 4,
+    "x_post_per_day": 1,
     "primary_niche": "Claude初心者・AI入門",
     "language": "ja"
   }
