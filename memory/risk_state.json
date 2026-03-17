@@ -1,15 +1,12 @@
 {
   "api_cost_today_usd": 0.0,
   "api_cost_month_usd": 0.0,
-  "proposals_today": 3,
-  "date": "2026-03-16",
+  "proposals_today": 0,
+  "date": "2026-03-17",
   "month": "2026-03",
-  "consecutive_errors": {
-    "crowdworks": 0,
-    "saas": 0
-  },
+  "consecutive_errors": {},
   "paused_modules": {},
-  "total_runs": 60,
-  "last_run": "2026-03-16T16:21:04.004290",
+  "total_runs": 63,
+  "last_run": "2026-03-17T05:42:22.792442",
   "error_log": []
 }
