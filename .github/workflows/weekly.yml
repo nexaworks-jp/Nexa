@@ -50,7 +50,7 @@ jobs:
             "settings": {
               "dry_run": false,
               "note_post_per_day": 4,
-              "x_post_per_day": 8,
+              "x_post_per_day": 4,
               "primary_niche": "AI活用術・副業・節約",
               "language": "ja"
             }

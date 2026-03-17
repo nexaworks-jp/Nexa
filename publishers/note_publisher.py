@@ -992,14 +992,48 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
                 return 'plain_text';
             }""", [html_body, content])
             print(f"[NotePublisher] 本文入力完了 ({body_filled})")
-            if not body_filled:
+
+            # 本文が大きい場合ペースト処理に時間がかかるため長めに待機
+            page.wait_for_timeout(5000)
+
+            # ペースト後の実文字数を確認（0文字ならキーボード入力にフォールバック）
+            actual_chars = page.evaluate("""() => {
+                const editors = document.querySelectorAll('[contenteditable="true"]');
+                let total = 0;
+                for (const ed of editors) {
+                    if (ed.getBoundingClientRect().height > 50) {
+                        total += (ed.innerText || '').replace(/\\s/g, '').length;
+                    }
+                }
+                return total;
+            }""")
+            print(f"[NotePublisher] 本文実文字数: {actual_chars}文字")
+
+            if actual_chars < 30:
+                print("[NotePublisher] 本文ペースト未反映 → keyboard入力でリトライ")
+                try:
+                    # 本文エリア（高さ>50の最後のcontenteditable）にフォーカス
+                    body_editors = page.locator('[contenteditable="true"]')
+                    count = body_editors.count()
+                    for i in range(count - 1, -1, -1):
+                        ed = body_editors.nth(i)
+                        if ed.bounding_box() and ed.bounding_box()["height"] > 50:
+                            ed.click()
+                            break
+                    page.wait_for_timeout(500)
+                    # プレーンテキストを分割して入力（大量入力対応）
+                    chunk = 500
+                    for i in range(0, len(content), chunk):
+                        page.keyboard.type(content[i:i+chunk], delay=1)
+                    page.wait_for_timeout(1000)
+                    print("[NotePublisher] keyboard入力完了")
+                except Exception as ke:
+                    print(f"[NotePublisher] keyboard入力失敗: {ke}")
+            elif not body_filled:
                 page.keyboard.press("Tab")
                 page.wait_for_timeout(500)
                 page.keyboard.type(content, delay=2)
                 print("[NotePublisher] 本文入力完了 (keyboard fallback)")
-
-            # 本文が大きい場合ペースト処理に時間がかかるため長めに待機
-            page.wait_for_timeout(5000)
 
             # ========== 公開ボタン ==========
             _save_debug_screenshot(page, "before_publish")
@@ -1044,10 +1078,21 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
             _save_debug_screenshot(page, "after_step1")
 
             # モーダルが開いたか確認（「投稿する」または「キャンセル」が出現するはず）
-            modal_opened = page.evaluate("""() => {
+            # ※「タイトル、本文を入力してください」エラーモーダルは閉じてから再試行
+            modal_state = page.evaluate("""() => {
                 const btns = Array.from(document.querySelectorAll('button, [role="button"]'));
-                return btns.some(b => b.innerText.trim() === '投稿する' || b.innerText.trim() === '公開する' || b.innerText.trim() === 'キャンセル');
+                const hasPublish = btns.some(b => b.innerText.trim() === '投稿する' || b.innerText.trim() === '公開する' || b.innerText.trim() === 'キャンセル');
+                const hasError = document.body.innerText.includes('タイトル、本文を入力してください');
+                return {hasPublish, hasError};
             }""")
+            if modal_state.get("hasError"):
+                print("[NotePublisher] 「本文入力」エラーモーダル検出 → 閉じてリトライ")
+                try:
+                    page.locator('button:has-text("閉じる")').first.click(timeout=3000)
+                    page.wait_for_timeout(1000)
+                except Exception:
+                    pass
+            modal_opened = modal_state.get("hasPublish") and not modal_state.get("hasError")
             if not modal_opened:
                 print("[NotePublisher] モーダル未表示 → 再クリックしてリトライ")
                 # 「公開に進む」を再度クリックしてリトライ
