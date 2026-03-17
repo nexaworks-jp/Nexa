@@ -157,9 +157,11 @@
     ],
     "price": 0,
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260314_194213.md",
-    "status": "pending",
+    "status": "posted",
     "created_at": "2026-03-14T19:42:13.332999",
-    "retry_count": 0
+    "retry_count": 1,
+    "posted_at": "2026-03-17T16:25:57.023323",
+    "url": "https://note.com/n/na8e6c828cb72"
   },
   {
     "title": "Claude の長文処理が進化｜100万トークン対応で何ができるようになった？",
