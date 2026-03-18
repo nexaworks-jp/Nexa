@@ -228,9 +228,11 @@
     ],
     "price": 0,
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260315_213132.md",
-    "status": "pending",
+    "status": "posted",
     "created_at": "2026-03-15T21:31:32.647391",
-    "retry_count": 0
+    "retry_count": 1,
+    "posted_at": "2026-03-18T08:47:25.554280",
+    "url": "https://note.com/n/n8136c7ff5d01"
   },
   {
     "title": "Claude CodeのSkills機能を使いこなす｜カスタムツール開発で業務自動化を実現する実践ガイド",
