@@ -1,5 +1,7 @@
 {
   "anthropic_api_key": "YOUR_ANTHROPIC_API_KEY_HERE",
+  "ollama_url": "http://localhost:11434",
+  "ollama_model": "gemma3:12b",
   "line": {
     "channel_access_token": "YOUR_LINE_CHANNEL_ACCESS_TOKEN",
     "channel_secret": "YOUR_LINE_CHANNEL_SECRET",

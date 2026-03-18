@@ -161,15 +161,15 @@ def _retry_pending_drafts(email: str, password: str) -> int:
             "price": item.get("price", 0),
         }
 
-        # セッションクッキーAPIを最優先で試行
-        result = api_post_with_session_cookie(article)
-        if not result.get("success") and email and password:
-            result = api_post(article, email, password)
-        # API（fetch/requests）はnote_gql_auth_tokenが取れないため常に422になる
-        # → Playwright UIで実際のブラウザ操作（JWTはブラウザJS内部で処理）
-        if not result.get("success") and email and password:
-            print(f"[NotePublisher] API失敗 → Playwright UI投稿試行")
+        # リトライはPlaywrightフルUIのみ使用する
+        # （api_post_with_session_cookie / api_post はエディタを開くたびに
+        #   note.com 側で新規下書きが自動生成されるため、リトライに使うと
+        #   同タイトルの下書きが量産される。最も信頼性の高いPlaywrightに絞る）
+        if email and password:
+            print(f"[NotePublisher] Playwright UI で再投稿試行")
             result = auto_post_with_playwright(article, email, password)
+        else:
+            result = {"success": False, "reason": "no credentials"}
 
         item["retry_count"] = item.get("retry_count", 0) + 1
         updated = True
@@ -648,10 +648,10 @@ def api_post_with_session_cookie(article: dict) -> dict:
         if result.get("success"):
             return result
 
-        print(f"[NoteAPI-Session] Playwright fetch失敗: {result.get('reason', '')[:100]} → requests fallback")
-        # フォールバック: requestsでPUT
-        session.headers.update({"Origin": "https://editor.note.com", "Referer": "https://editor.note.com/"})
-        return _create_and_publish(session, title, content, hashtags, price, user_key)
+        # _create_and_publish フォールバックは削除済み（呼ぶたびに新規下書きが生まれるため）
+        # 失敗時は呼び出し元（publish/retry）がPlaywrightフルUIにフォールバックする
+        print(f"[NoteAPI-Session] Playwright fetch失敗: {result.get('reason', '')[:100]}")
+        return {"success": False, "reason": result.get("reason", "playwright_fetch_failed")}
 
     except Exception as e:
         print(f"[NoteAPI-Session] エラー: {e}")
@@ -768,10 +768,10 @@ def api_post(article: dict, email: str, password: str) -> dict:
         if result.get("success"):
             return result
 
-        print(f"[NoteAPI] Playwright fetch失敗: {result.get('reason', '')[:100]} → requests fallback")
-        # フォールバック: requestsでPUT
-        session.headers.update({"Origin": "https://editor.note.com", "Referer": "https://editor.note.com/"})
-        return _create_and_publish(session, title, content, hashtags, price, user_key)
+        # _create_and_publish フォールバックは削除済み（呼ぶたびに新規下書きが生まれるため）
+        # 失敗時は呼び出し元（publish/retry）がPlaywrightフルUIにフォールバックする
+        print(f"[NoteAPI] Playwright fetch失敗: {result.get('reason', '')[:100]}")
+        return {"success": False, "reason": result.get("reason", "playwright_fetch_failed")}
 
     except Exception as e:
         print(f"[NoteAPI] エラー: {e}")

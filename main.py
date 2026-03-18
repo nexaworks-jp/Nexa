@@ -17,7 +17,7 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, diary_writer, mood_generator
+from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, diary_writer, mood_generator, sofia_topic_engine
 from publishers import note_publisher, x_publisher, crowdworks_publisher, gmail_outreach, line_notifier, obsidian_publisher, static_site_publisher
 import risk_manager
 
@@ -263,6 +263,11 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
         print("\n[Step 1] トレンド分析...")
         trends = trend_analyzer.analyze(config)
         print(f"  → {', '.join(trends['topics'][:4])}")
+        # ソフィアの今日のトークテーマを生成（トレンドキャッシュ利用）
+        try:
+            sofia_topic_engine.run(config)
+        except Exception as e:
+            print(f"[SofiaTopicEngine] エラー（無視）: {e}")
     else:
         # 非コンテンツ時間帯はキャッシュを使用（API呼び出しなし）
         _cache_path = os.path.join(os.path.dirname(__file__), "memory", "trends_cache.json")

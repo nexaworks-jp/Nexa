@@ -203,30 +203,36 @@ def score_and_select(client: anthropic.Anthropic, candidates: list[dict],
             "role": "user",
             "content": f"""以下の候補から、AI解説サイトに最適な記事トピックを{num_topics}つ選んでください。
 
+【絶対条件（これを満たさない候補は選ばない）】
+- AI・LLM・機械学習・生成AI・AIツール・AIサービスに直接関係する内容であること
+- 政治・経済・スポーツ・サプライチェーン・資源・地政学など、AIと無関係な話題は候補にあっても必ず除外する
+
 【サイトのコンセプト】
 - 実践・使い方系を最優先（導入方法・具体的な使い方・新機能の活用法）
 - 読んだ人が「今日すぐ試せる」内容
-- Claude Code実践Tips（Skills/CLAUDE.md/MCP/スラッシュコマンド）も扱う
+- GPT・Claude・Geminiなど最新モデルの新機能・価格・使い方など、まだ広く知られていない情報を優先
 
-【選定基準（重要度順）】
-1. 実用性(40%): 「こう使う」「こうやる」が伝わる実践的な内容か
-2. バズ度・需要(30%): 今話題か、検索需要が高いか
-3. 新鮮さ(20%): 過去記事と重複しないか
-4. AI関連度(10%): AIに関する内容か
+【選定基準（重要度順、AI関係以外は選考対象外）】
+1. 最新性(35%): 新モデル・新機能・新サービスなど、今週・今月の最新情報か
+2. 実用性(35%): 「こう使う」「こうやる」が伝わる実践的な内容か
+3. バズ度・需要(20%): 今話題か、AIユーザーが知りたがっているか
+4. 新鮮さ(10%): 過去記事と重複しないか
 
 【優先するトピックの例】
-- 「○○の導入方法・始め方」
-- 「○○の新機能まとめと使い方」
+- 「GPT-○○ / Claude ○○ / Gemini ○○の新機能・価格・使い方まとめ」
+- 「○○AIの導入方法・始め方」
 - 「○○を使って△△する方法」
-- 「Claude Code Skills/CLAUDE.md/MCPの実践Tips」
+- 「Claude Code / Cursor / CopilotなどAI開発ツールの実践Tips」
+- まだ日本語記事が少ない最新AI情報の解説
 
 【避けるトピック】
-- 「LLMとはなにか」「AIの仕組み」「AIのメリットデメリット」などの概念説明のみ
+- AI以外の話題（経済・政治・資源・地政学・スポーツ等）→ 絶対に選ばない
+- 「LLMとはなにか」「AIの仕組み」など概念説明のみの記事
 - 「比較・解説」だけで「で、どうすればいい？」に答えない記事
 
 【トピックバランス（{num_topics}本中）】
-- 実践・使い方系（初心者向け含む）: {num_topics - 1}本
-- Claude Code実践系: 1本（Skills/CLAUDE.md/MCPなど）
+- 最新AIモデル・サービスの実践系: {num_topics - 1}本
+- AI開発ツール実践系（Claude Code/MCP/Cursorなど）: 1本
 
 【除外条件】
 - 以下の過去記事と似ているタイトルは除外してください：
@@ -235,7 +241,7 @@ def score_and_select(client: anthropic.Anthropic, candidates: list[dict],
 【候補リスト】
 {candidates_str}
 
-出力形式（日本語の記事タイトル案で）：
+出力形式（日本語の記事タイトル案で。AI無関係な候補が{num_topics}つ未満しかなければ、その分は知識から最新AIトピックを補完してよい）：
 {{"selected_topics": ["トピック1", "トピック2", "トピック3", "トピック4"]}}"""
         }]
     )
@@ -246,10 +252,14 @@ def score_and_select(client: anthropic.Anthropic, candidates: list[dict],
     if start >= 0 and end > start:
         try:
             data = json.loads(text[start:end])
-            return data.get("selected_topics", [])
+            topics = data.get("selected_topics", [])
+            if topics:
+                return topics
         except Exception:
             pass
-    return [c["title"] for c in top_candidates[:num_topics]]
+    # JSON解析失敗時は空リストを返す（AIフィルターなしの生候補で記事を作らせない）
+    print("[TrendAnalyzer] JSON解析失敗 → トピック選定スキップ（記事生成しない）")
+    return []
 
 
 # ========== メイン ==========
