@@ -256,8 +256,10 @@
     ],
     "price": 0,
     "draft_path": "/home/runner/work/Nexa/Nexa/drafts/note_20260315_213846.md",
-    "status": "pending",
+    "status": "posted",
     "created_at": "2026-03-15T21:38:46.399722",
-    "retry_count": 0
+    "retry_count": 1,
+    "posted_at": "2026-03-18T16:45:25.402725",
+    "url": "https://note.com/n/n657f545a7237"
   }
 ]
