@@ -26,6 +26,18 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Cloudflareファイル変更チェック
+        id: cf_check
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD -- wrangler.toml analytics-worker/ line-worker/ 2>/dev/null | wc -l)
+          if [ "$CHANGED" -gt "0" ] || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "CF deploy: YES (変更あり or 手動実行)"
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "CF deploy: SKIP (変更なし)"
+          fi
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -151,14 +163,14 @@ jobs:
           git push origin main
 
       - name: Deploy to Cloudflare Workers
-        if: steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.cf_check.outputs.changed == 'true'
         run: npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Setup Analytics KV namespace
-        if: steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch'
+        if: steps.cf_check.outputs.changed == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -186,7 +198,7 @@ jobs:
           fi
 
       - name: Deploy Analytics Worker
-        if: (steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch') && env.CF_ANALYTICS_KV_ID != ''
+        if: steps.cf_check.outputs.changed == 'true' && env.CF_ANALYTICS_KV_ID != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
