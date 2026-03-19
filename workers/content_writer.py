@@ -402,7 +402,9 @@ difficultyの基準（1〜5）:
 2: 初心者向け（基本的な使い方・簡単な手順）
 3: 中級者向け（応用・複数ツールの組み合わせ）
 4: やや上級（自動化・設定カスタマイズ）
-5: 上級者向け（API・開発・高度な活用）"""
+5: 上級者向け（API・開発・高度な活用）
+
+重要: JSONオブジェクトのみ出力すること。```json等のマークダウンコードブロックで囲まないこと。"""
         }]
     )
 
@@ -424,7 +426,22 @@ difficultyの基準（1〜5）:
             # contentはJSONブロック全体の後を使うか、本文全体をフォールバック
             content_m = re.search(r'"content"\s*:\s*"([\s\S]*?)(?:(?<!\\)",\s*"(?:price|hashtags|summary|difficulty|title))|(?:(?<!\\)"\s*\})', text)
             extracted_title = title_m.group(1) if title_m else f"{topic}【初心者向け解説】"
-            extracted_content = content_m.group(1).encode().decode('unicode_escape', errors='replace') if content_m else text
+            if content_m:
+                extracted_content = content_m.group(1).encode().decode('unicode_escape', errors='replace')
+            else:
+                # content_m が取れない場合は "content": 以降を手動検索
+                _ci = text.find('"content"')
+                if _ci >= 0:
+                    _vs = text.find('"', _ci + 9) + 1
+                    _extracted = ""
+                    for _ek in ['",\n  "price"', '",\n  "hashtags"', '",\n  "summary"']:
+                        _ve = text.find(_ek, _vs)
+                        if _ve > _vs:
+                            _extracted = text[_vs:_ve]
+                            break
+                    extracted_content = _extracted.replace("\\n", "\n") if _extracted else text
+                else:
+                    extracted_content = text
             extracted_hashtags = []
             if hashtags_m:
                 extracted_hashtags = [h.strip().strip('"') for h in hashtags_m.group(1).split(",") if h.strip().strip('"')]
@@ -452,16 +469,38 @@ difficultyの基準（1〜5）:
     c = data.get("content", "")
     c_stripped = c.strip()
     if c_stripped.startswith("```json") or (c_stripped.startswith("```") and c_stripped[3:].lstrip().startswith("{")):
+        inner = _re_cw.sub(r'^```json?\s*', '', c_stripped)
+        inner = _re_cw.sub(r'\s*```\s*$', '', inner.strip())
         try:
-            inner = _re_cw.sub(r'^```json?\s*', '', c_stripped)
-            inner = _re_cw.sub(r'\s*```\s*$', '', inner.strip())
             nested = json.loads(inner)
             nested_content = nested.get("content", "")
             if nested_content:
                 data["content"] = nested_content.replace("\\n", "\n").replace("\\t", "\t")
                 print(f"[ContentWriter] ネストJSONブロック展開: {len(data['content'])}文字")
         except Exception:
-            pass
+            # json.loads失敗（コードブロック内の未エスケープ改行など）→ 文字列で直接抽出
+            try:
+                # "content": の後から次のトップレベルフィールドの行まで取り出す
+                m = _re_cw.search(r'"content"\s*:\s*"([\s\S]+?)"\s*,\s*\n\s*"(?:price|hashtags|summary|difficulty)', inner)
+                if m:
+                    data["content"] = m.group(1).replace("\\n", "\n").replace("\\t", "\t")
+                    print(f"[ContentWriter] ネストJSON文字列抽出: {len(data['content'])}文字")
+                else:
+                    # さらなるフォールバック: "content": の直後から "price": の行の手前まで
+                    ci = inner.find('"content"')
+                    if ci >= 0:
+                        vs = inner.find('"', ci + 9) + 1
+                        for end_kw in ['\n  "price"', '\n  "hashtags"', '\n  "summary"', '\n  "difficulty"']:
+                            ve = inner.find(end_kw, vs)
+                            if ve > vs:
+                                raw = inner[vs:ve].rstrip('",').rstrip()
+                                if raw.endswith('"'):
+                                    raw = raw[:-1]
+                                data["content"] = raw.replace("\\n", "\n").replace("\\t", "\t")
+                                print(f"[ContentWriter] ネストJSONキーワード抽出: {len(data['content'])}文字")
+                                break
+            except Exception:
+                pass
 
     # ファクトチェック（最大2回・丁寧に）
     for attempt in range(2):
