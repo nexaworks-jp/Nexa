@@ -1,5 +1,26 @@
 {
-  "note_articles": [],
+  "note_articles": [
+    {
+      "title": "Claude CodeでKaggle金メダルを取った話｜実際の競技コードの書き方・ツール活用法",
+      "url": "https://note.com/n/n0e5cb27a6abf",
+      "published_at": "2026-03-19T22:18:25.354906"
+    },
+    {
+      "title": "Claude Codeをフル活用！本気で使える厳選Skills/Plugin 8選｜開発効率を上げる実践的な設定ガイド",
+      "url": "https://note.com/n/n548eae6bc71c",
+      "published_at": "2026-03-19T22:18:25.354913"
+    },
+    {
+      "title": "AI機能搭載のRSSリーダーを作った｜LLM×Webアプリの実装パターン・API連携の具体例【初心者向け】",
+      "url": "https://note.com/n/n660e23d769a6",
+      "published_at": "2026-03-19T22:18:25.354916"
+    },
+    {
+      "title": "GPT-4o vs Claude 3.5｜新モデルの実力を仕事で試してみた。価格・スピード・精度を初心者向けに比較",
+      "url": "https://note.com/n/nb2935d5cf8bf",
+      "published_at": "2026-03-19T22:18:25.354919"
+    }
+  ],
   "x_posts": [],
   "topics_used": [
     "AI活用術",
@@ -39,6 +60,10 @@
     "ChatGPTとClaudeの使い分け｜AIチャットボットを仕事で活用する際の選択基準を初心者向けに解説",
     "生成AIでパワーポイント資料を作る方法｜無料ツールから有料プランまで2026年最新ガイド",
     "Claude CodeのSkills機能を使いこなす｜カスタムツール開発で業務自動化を実現する実践ガイド",
-    "Claude Code Hooksで本番環境の事故を防ぐ｜DB誤操作・秘密鍵漏洩をAIが自動ブロックする安全な開発フロー"
+    "Claude Code Hooksで本番環境の事故を防ぐ｜DB誤操作・秘密鍵漏洩をAIが自動ブロックする安全な開発フロー",
+    "Claude Code / CodexでKaggle金メダルを取った話｜実際の競技コードの書き方・ツール活用法",
+    "Claude Codeをフル活用！本気で使える厳選Skills/Plugin 8選｜開発効率を上げる実践的な設定ガイド",
+    "AI機能搭載のRSSリーダーを作った｜LLM×Webアプリの実装パターン・API連携の具体例",
+    "GPT-4o / Claude 3.7の最新アップデート機能を仕事で即実践する｜新モデルの価格・スピード・精度比較と活用ガイド"
   ]
 }
