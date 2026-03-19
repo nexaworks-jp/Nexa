@@ -438,7 +438,7 @@ def write_improvements_report(analysis: dict) -> str:
             est = opp.get("estimated_monthly_jpy", 0)
             section += f"- {effort_emoji} **{opp.get('name', '')}**: {opp.get('description', '')} (推定月{est:,}円)\n"
 
-    content = f"# AIカンパニー 改善提案ログ\n" + section + existing.replace("# AIカンパニー 改善提案ログ\n", "")
+    content = f"# Nexa 改善提案ログ\n" + section + existing.replace("# Nexa 改善提案ログ\n", "")
 
     with open(filepath, "w", encoding="utf-8") as f:
         f.write(content)
@@ -497,7 +497,7 @@ def write_weekly_report(analysis: dict, memory: dict, all_results: dict):
         opp_lines += f"  - {e} {opp.get('name', '')} (推定月{est:,}円)\n"
 
     content = f"""# 週次ダッシュボード — {now.strftime('%Y-%m-%d')}
-> 自律型AIカンパニー Nexa | cc-company Review Format
+> Nexa | cc-company Review Format
 
 ---
 
@@ -561,7 +561,7 @@ def write_weekly_report(analysis: dict, memory: dict, all_results: dict):
 - [ ]
 
 ---
-*自動生成: {now.isoformat()} | Nexa自律型AIカンパニー*
+*自動生成: {now.isoformat()} | Nexa*
 """
 
     with open(filepath, "w", encoding="utf-8") as f:

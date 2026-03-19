@@ -1,4 +1,4 @@
-# 自律型AIカンパニー - Claude Code 指示書
+# Nexa - Claude Code 指示書
 
 ## モデル使い分けルール（自動切り替え）
 

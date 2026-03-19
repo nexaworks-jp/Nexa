@@ -1,4 +1,4 @@
-name: AI Company Auto Run
+name: Nexa Auto Run
 
 on:
   schedule:
@@ -130,7 +130,7 @@ jobs:
             echo "Social learning runs on Monday 6 JST (21 UTC). Current: DOW=${DOW} ${HOUR} UTC. Skipping."
           fi
 
-      - name: Run AI Company
+      - name: Run Nexa
         if: steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           if [ "${{ github.event.inputs.force_content }}" = "true" ]; then
@@ -143,7 +143,7 @@ jobs:
         if: steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           git config --local user.email "ai-company[bot]@users.noreply.github.com"
-          git config --local user.name "AI Company Bot"
+          git config --local user.name "Nexa Bot"
           # 生成ファイルをバックアップ
           cp -r memory/ /tmp/ai_memory/ 2>/dev/null || true
           cp -r proposals/ /tmp/ai_proposals/ 2>/dev/null || true
@@ -159,7 +159,7 @@ jobs:
           cp -r /tmp/ai_drafts/. drafts/ 2>/dev/null || true
           # コミット＆プッシュ
           git add memory/ proposals/ docs/ drafts/ 2>/dev/null || true
-          git diff --staged --quiet || git commit -m "🤖 AI Company run $(date +'%Y-%m-%d %H:%M')"
+          git diff --staged --quiet || git commit -m "🤖 Nexa run $(date +'%Y-%m-%d %H:%M')"
           git push origin main
 
       - name: Deploy to Cloudflare Workers

@@ -356,7 +356,7 @@ def handle_command(command: str, config: dict) -> str:
 
     elif cmd_lower in ("ヘルプ", "help", "h", "?"):
         return (
-            "🤖 AIカンパニー コマンド一覧\n\n"
+            "🤖 Nexa コマンド一覧\n\n"
             "📊 レポート - 収益・状態を表示\n"
             "🛡️ リスク - リスク状態を表示\n"
             "▶️ 実行 - 今すぐ実行\n"
@@ -380,7 +380,7 @@ class LineWebhookHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.end_headers()
-            self.wfile.write("OK - Nexa AI Company Webhook".encode("utf-8"))
+            self.wfile.write("OK - Nexa Webhook".encode("utf-8"))
         else:
             self.send_response(404)
             self.end_headers()

@@ -1,5 +1,5 @@
 """
-自律型AIカンパニー - メインオーケストレーター
+Nexa - メインオーケストレーター
 CEO Agentが複数の収益チャネルを横断して判断・実行する
 """
 import json
@@ -188,7 +188,7 @@ def run_saas_task(config, trends, saas_memory, dry_run):
 def print_report(earnings: dict, strategy: dict, proposals_memory: dict):
     width = 52
     print("\n" + "=" * width)
-    print("  自律型AIカンパニー 収益レポート")
+    print("  Nexa 収益レポート")
     print("=" * width)
     print(f"  総収益:       ¥{earnings.get('total_earnings_jpy', 0):>10,}")
     print(f"  実行回数:     {strategy.get('iteration', 0):>10}回")
@@ -213,7 +213,7 @@ def print_report(earnings: dict, strategy: dict, proposals_memory: dict):
 
 def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, force_content: bool = False):
     print(f"\n{'='*52}")
-    print(f"  自律型AIカンパニー 起動")
+    print(f"  Nexa 起動")
     print(f"  {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     if dry_run:
         print("  [DRY RUNモード]")
@@ -495,7 +495,7 @@ def send_weekly_report():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="自律型AIカンパニー")
+    parser = argparse.ArgumentParser(description="Nexa")
     parser.add_argument("--dry-run", action="store_true", help="実際には投稿・送信せずにテスト実行")
     parser.add_argument("--report", action="store_true", help="収益レポートを表示")
     parser.add_argument("--weekly", action="store_true", help="週次実行（新モジュール生成含む）")

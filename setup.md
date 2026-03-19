@@ -90,7 +90,7 @@ python line_webhook.py  # 別ターミナルで起動
 
 ## Step 6: 動作確認（5分）
 
-GitHubリポジトリの「Actions」タブから「AI Company Auto Run」→「Run workflow」で手動実行。
+GitHubリポジトリの「Actions」タブから「Nexa Auto Run」→「Run workflow」で手動実行。
 
 ログを確認して、エラーがなければ完了！
 

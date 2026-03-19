@@ -1,5 +1,5 @@
 # 週次ダッシュボード — 2026-03-15
-> 自律型AIカンパニー Nexa | cc-company Review Format
+> Nexa | cc-company Review Format
 
 ---
 
@@ -70,4 +70,4 @@
 - [ ]
 
 ---
-*自動生成: 2026-03-15T05:37:15.342175 | Nexa自律型AIカンパニー*
+*自動生成: 2026-03-15T05:37:15.342175 | Nexa*

@@ -69,7 +69,7 @@ jobs:
       - name: Commit all improvements
         run: |
           git config --local user.email "ai-company[bot]@users.noreply.github.com"
-          git config --local user.name "AI Company Bot"
+          git config --local user.name "Nexa Bot"
           cp -r memory/ /tmp/ai_memory/ 2>/dev/null || true
           cp -r proposals/ /tmp/ai_proposals/ 2>/dev/null || true
           git fetch origin main
