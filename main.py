@@ -239,23 +239,21 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     risk_state = risk_manager.reset_daily_if_needed(risk_state)
     risk_state = risk_manager.increment_run(risk_state)
 
-    # API実行スケジュール（strategy.jsonで動的管理）
-    # GitHub Actionsのランダム遅延（最大60分）＋起動遅延でhourが1〜2つズレるため
-    # cronスケジュール（3時間刻み）にスナップして正しいスロットを判定する
-    _raw_hour = datetime.now().hour
-    hour = (_raw_hour // 3) * 3  # UTC cron slot: 0,3,6,9,12,15,18,21
-    weekday = datetime.now().weekday()  # 0=月曜
-    sched = strategy.get("api_schedule", {})
-    # デフォルト値（初回・未設定時）
-    content_hour     = sched.get("content_hour_utc", 21)       # 6JST
-    improve_hour     = sched.get("improve_hour_utc", 13)       # 22JST
-    saas_weekdays    = sched.get("saas_weekdays", [0])          # 月曜のみ
-    startup_notify   = sched.get("startup_notify", False)       # 起動通知は22時のみ
+    # 日付ハッシュベースのランダム投稿スケジュール（sleep不要・毎日異なる時刻）
+    import hashlib as _hl
+    from datetime import date as _date_cls
+    _seed = int(_hl.md5(_date_cls.today().isoformat().encode()).hexdigest(), 16)
+    hour = datetime.utcnow().hour
+    weekday = datetime.utcnow().weekday()  # 0=月曜
 
-    do_content  = (hour == content_hour) or weekly or dry_run or force_content
-    do_improve  = (hour == improve_hour) or weekly or dry_run
+    content_hour = [18, 21, 0][_seed % 3]  # UTC 18/21/0 = JST 3/6/9（日毎ランダム）
+    casual_hours = {h for i, h in enumerate([6, 9, 12]) if (_seed >> (i + 4)) & 1}
+    if not casual_hours:
+        casual_hours = {[6, 9, 12][_seed % 3]}
 
-    print(f"  スケジュール: content={do_content} improve={do_improve}")
+    do_content = (hour == content_hour) or weekly or dry_run or force_content
+
+    print(f"  スケジュール: content={do_content} content_hour={content_hour} casual_hours={casual_hours}")
 
     # 今日のソフィアの気分（1日固定）
     today_mood = mood_generator.get_today_mood()
@@ -402,9 +400,8 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
 
     # ソフィア日常つぶやき（JST 15/18/21・日記と被らないよう12時を除外）
     # UTC: 6=JST15, 9=JST18, 12=JST21
-    _CASUAL_HOURS = {6, 9, 12}
     import random as _random
-    if not dry_run and hour in _CASUAL_HOURS and _random.random() < 0.60:
+    if not dry_run and hour in casual_hours and _random.random() < 0.60:
         print("\n[Task: Casual] ソフィア日常つぶやき生成...")
         try:
             import anthropic as _anthropic

@@ -35,10 +35,32 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: スケジュールチェック
+        id: schedule_check
+        run: |
+          python3 -c "
+          import hashlib, datetime, os
+          now = datetime.datetime.utcnow()
+          today = datetime.date.today().isoformat()
+          seed = int(hashlib.md5(today.encode()).hexdigest(), 16)
+          content_hour = [18, 21, 0][seed % 3]
+          casual_hours = [h for i, h in enumerate([6, 9, 12]) if (seed >> (i + 4)) & 1]
+          if not casual_hours:
+              casual_hours = [[6, 9, 12][seed % 3]]
+          diary_hour = 3
+          active_hours = set(casual_hours + [content_hour, diary_hour])
+          hour = now.hour
+          print(f'Current UTC hour: {hour}, Active hours: {sorted(active_hours)}')
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'active={\"true\" if hour in active_hours else \"false\"}\n')
+          "
+
       - name: Install Playwright browsers
+        if: steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch'
         run: playwright install chromium --with-deps
 
       - name: Create config.json from secrets
+        if: steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           cat > config.json << 'EOF'
           {
@@ -74,6 +96,7 @@ jobs:
           EOF
 
       - name: Create note cookies file
+        if: steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch'
         env:
           NOTE_COOKIES: ${{ secrets.NOTE_COOKIES }}
         run: |
@@ -84,17 +107,8 @@ jobs:
             echo "NOTE_COOKIES シークレット未設定 → フォームログインを使用"
           fi
 
-      - name: Random posting delay (human-like timing)
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "手動実行のためランダム遅延をスキップ"
-          else
-            DELAY=$((RANDOM % 3600))
-            echo "ランダム遅延: ${DELAY}秒 ($(( DELAY / 60 ))分) 待機中..."
-            sleep $DELAY
-          fi
-
       - name: Run social learning (Sofia - Monday 6JST only)
+        if: steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           HOUR=$(date -u +%H)
           DOW=$(date -u +%u)  # 1=月曜〜7=日曜
@@ -105,6 +119,7 @@ jobs:
           fi
 
       - name: Run AI Company
+        if: steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           if [ "${{ github.event.inputs.force_content }}" = "true" ]; then
             python main.py --force-content
@@ -113,6 +128,7 @@ jobs:
           fi
 
       - name: Commit updated memory and proposal files
+        if: steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch'
         run: |
           git config --local user.email "ai-company[bot]@users.noreply.github.com"
           git config --local user.name "AI Company Bot"
@@ -135,12 +151,14 @@ jobs:
           git push origin main
 
       - name: Deploy to Cloudflare Workers
+        if: steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch'
         run: npx wrangler deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
       - name: Setup Analytics KV namespace
+        if: steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -168,7 +186,7 @@ jobs:
           fi
 
       - name: Deploy Analytics Worker
-        if: env.CF_ANALYTICS_KV_ID != ''
+        if: (steps.schedule_check.outputs.active == 'true' || github.event_name == 'workflow_dispatch') && env.CF_ANALYTICS_KV_ID != ''
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
