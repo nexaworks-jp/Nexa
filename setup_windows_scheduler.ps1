@@ -5,7 +5,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $pythonPath = (Get-Command python).Source
 $mainScript = Join-Path $scriptDir "main.py"
 
-Write-Host "=== 自律型AIカンパニー スケジューラ設定 ===" -ForegroundColor Cyan
+Write-Host "=== Nexa スケジューラ設定 ===" -ForegroundColor Cyan
 Write-Host "Python: $pythonPath"
 Write-Host "Script: $mainScript"
 
@@ -44,7 +44,7 @@ foreach ($time in $times) {
         -Action $action `
         -Trigger $trigger `
         -Settings $settings `
-        -Description "AI Company 自動実行 $time" `
+        -Description "Nexa 自動実行 $time" `
         -RunLevel Highest | Out-Null
 
     Write-Host "タスク登録: $taskName ($time)" -ForegroundColor Green

@@ -17,7 +17,7 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, diary_writer, mood_generator, sofia_topic_engine
+from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, diary_writer, mood_generator, sofia_topic_engine, engagement_worker
 from publishers import note_publisher, x_publisher, crowdworks_publisher, gmail_outreach, line_notifier, obsidian_publisher, static_site_publisher
 import risk_manager
 
@@ -401,17 +401,47 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     # ソフィア日常つぶやき（JST 15/18/21・日記と被らないよう12時を除外）
     # UTC: 6=JST15, 9=JST18, 12=JST21
     import random as _random
-    if not dry_run and hour in casual_hours and _random.random() < 0.60:
-        print("\n[Task: Casual] ソフィア日常つぶやき生成...")
+    if not dry_run and hour in casual_hours:
+        import anthropic as _anthropic
+        _client = _anthropic.Anthropic(api_key=config.get("anthropic_api_key", ""))
+
+        if _random.random() < 0.40:
+            # 経験ベース投稿を試みる（40%）
+            print("\n[Task: Experience] ソフィア経験ベース投稿生成...")
+            try:
+                experiences = content_writer.collect_sofia_experiences()
+                exp_post = content_writer.create_experience_post(_client, experiences, mood_prompt=mood_prompt)
+                if exp_post.get("text"):
+                    x_publisher.publish(config, [exp_post], dry_run)
+                    content_writer.save_experience_log(exp_post)
+                    print(f"[Task: Experience] 投稿: {exp_post['text'][:40]}...")
+                else:
+                    # 経験データなし → カジュアルにフォールバック
+                    raise ValueError("経験データなし")
+            except Exception as e:
+                print(f"[Task: Experience] フォールバック→カジュアル: {e}")
+                casual_post = content_writer.create_x_post(_client, "", style="casual", mood_prompt=mood_prompt)
+                if casual_post.get("text"):
+                    x_publisher.publish(config, [casual_post], dry_run)
+                    print(f"[Task: Casual] 投稿: {casual_post['text'][:40]}...")
+        else:
+            # カジュアル投稿（60%）
+            print("\n[Task: Casual] ソフィア日常つぶやき生成...")
+            try:
+                casual_post = content_writer.create_x_post(_client, "", style="casual", mood_prompt=mood_prompt)
+                if casual_post.get("text"):
+                    x_publisher.publish(config, [casual_post], dry_run)
+                    print(f"[Task: Casual] 投稿: {casual_post['text'][:40]}...")
+            except Exception as e:
+                print(f"[Task: Casual] エラー: {e}")
+
+    # エンゲージメント処理（メンション記憶・フォロワー追跡）
+    if not dry_run:
+        print("\n[Task: Engagement] メンション記憶・フォロワー追跡...")
         try:
-            import anthropic as _anthropic
-            _client = _anthropic.Anthropic(api_key=config.get("anthropic_api_key", ""))
-            casual_post = content_writer.create_x_post(_client, "", style="casual", mood_prompt=mood_prompt)
-            if casual_post.get("text"):
-                x_publisher.publish(config, [casual_post], dry_run)
-                print(f"[Task: Casual] 投稿: {casual_post['text'][:40]}...")
+            engagement_worker.run(config)
         except Exception as e:
-            print(f"[Task: Casual] エラー: {e}")
+            print(f"[Task: Engagement] エラー: {e}")
 
     # Step 4: メモリ更新・保存
     strategy["current_focus"] = ", ".join(tasks)

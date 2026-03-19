@@ -519,7 +519,7 @@ async function handleCommand(cmd, env) {
   // ── ヘルプ ──
   if (["ヘルプ", "help", "h", "?"].includes(c)) {
     return (
-      "🤖 AIカンパニー コマンド一覧\n\n" +
+      "🤖 Nexa コマンド一覧\n\n" +
       "📊 レポート — 収益・状態を表示\n" +
       "🛡️ リスク — リスク状態を表示\n" +
       "▶️ 実行 — 今すぐ実行\n" +

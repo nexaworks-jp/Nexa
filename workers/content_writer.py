@@ -9,7 +9,7 @@ import os
 from datetime import datetime
 
 # ---- 機能フラグ（True に変えるだけで有効化） ----
-_FACT_EXTRACTION_ENABLED = False  # 事実抽出ログ（経験ベース投稿のネタ元）
+_FACT_EXTRACTION_ENABLED = True  # 事実抽出ログ（経験ベース投稿のネタ元）
 # ------------------------------------------------
 
 
