@@ -228,7 +228,7 @@ JSON形式で出力：
 
 def update_x_style_guide(insights: dict):
     """x_claude_beginner.md の学習セクションを自動更新する"""
-    path = os.path.join(BASE_DIR, "note用", "x_claude_beginner.md")
+    path = os.path.join(BASE_DIR, "writing", "x_claude_beginner.md")
     if not os.path.exists(path):
         return
 
@@ -327,7 +327,7 @@ def run(config: dict):
     tweets = fetch_popular_tweets_via_api(config, queries, max_per_query=8)
 
     # 現在のスタイルガイドを読み込む
-    style_path = os.path.join(BASE_DIR, "note用", "x_claude_beginner.md")
+    style_path = os.path.join(BASE_DIR, "writing", "x_claude_beginner.md")
     current_style = ""
     if os.path.exists(style_path):
         with open(style_path, "r", encoding="utf-8") as f:

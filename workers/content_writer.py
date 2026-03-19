@@ -15,7 +15,7 @@ _FACT_EXTRACTION_ENABLED = True  # 事実抽出ログ（経験ベース投稿の
 
 def load_style_reference() -> str:
     """claude_beginner.md を読み込んでスタイルガイドを返す"""
-    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "note用", "claude_beginner.md")
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "writing", "claude_beginner.md")
     if os.path.exists(path):
         with open(path, "r", encoding="utf-8") as f:
             return f.read()
@@ -25,7 +25,7 @@ def load_style_reference() -> str:
 def load_sophia_persona(style_type: str = "note") -> str:
     """スタイルガイドからソフィアのキャラクタープロンプトセクションだけ抽出して返す"""
     filename = "claude_beginner.md" if style_type == "note" else "x_claude_beginner.md"
-    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "投稿用", filename)
+    path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "writing", filename)
     if not os.path.exists(path):
         return ""
     with open(path, "r", encoding="utf-8") as f:

@@ -650,7 +650,7 @@ def get_latest_improvements() -> str:
 
 def _update_note_style(client: anthropic.Anthropic, memory: dict, analysis: dict):
     """週次でnote記事スタイルガイドを自律更新する"""
-    style_path = os.path.join(BASE_DIR, "note用", "claude_beginner.md")
+    style_path = os.path.join(BASE_DIR, "writing", "claude_beginner.md")
     analytics_path = os.path.join(BASE_DIR, "memory", "site_analytics.json")
     if not os.path.exists(style_path):
         return
@@ -804,7 +804,7 @@ def _evolve_sofia_character(client: anthropic.Anthropic, config: dict):
         return
 
     # 既存のキャラクター設定を読み込む（コンテキスト用）
-    style_path = os.path.join(BASE_DIR, "note用", "x_claude_beginner.md")
+    style_path = os.path.join(BASE_DIR, "writing", "x_claude_beginner.md")
     style_context = ""
     if os.path.exists(style_path):
         with open(style_path, "r", encoding="utf-8") as f:

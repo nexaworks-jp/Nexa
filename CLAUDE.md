@@ -66,8 +66,8 @@
 - `memory/` - 全ての学習・収益データ
 - `proposals/` - 生成した提案文（オーナーが毎朝確認）
 - `config.json` - APIキー設定（GitHubにpushしない）
-- `note用/claude_beginner.md` - noteスタイルガイド（Claude初心者向けテーマ）
-- `note用/x_claude_beginner.md` - X投稿スタイルガイド
+- `writing/claude_beginner.md` - noteスタイルガイド（Claude初心者向けテーマ）
+- `writing/x_claude_beginner.md` - X投稿スタイルガイド
 - `docs/` - 静的サイト（GitHub Pagesで無料公開。自動生成）
 - `docs/articles.json` - 全記事データ（HTMLと同期）
 
@@ -87,9 +87,13 @@ python risk_manager.py --status
 ```
 
 ## noteフィードバックのルール
-- オーナーからnoteの文章（構成・内容・文体・タイトルなど）についてフィードバックがあった場合、**必ず `note用/claude_beginner.md` に反映する**
+- オーナーからnoteの文章（構成・内容・文体・タイトルなど）についてフィードバックがあった場合、**必ず `writing/claude_beginner.md` に反映する**
 - 「オーナーフィードバック履歴」セクションに日付・内容を追記し、該当する執筆ルールも更新する
-- `note用/claude_beginner.md` 内のルール同士に矛盾・相反が生じた場合は、**勝手に解決せずオーナーに確認してから修正する**
+- `writing/claude_beginner.md` 内のルール同士に矛盾・相反が生じた場合は、**勝手に解決せずオーナーに確認してから修正する**
+
+## NEXA_OVERVIEW.mdの更新ルール
+- スケジュール・投稿アルゴリズム・投稿種別の割合・記憶システム・停止中機能・リスク管理ルールに変更を加えたときは、**必ず `NEXA_OVERVIEW.md` を同時に更新する**
+- 更新日（`最終更新: YYYY-MM-DD`）も忘れずに書き換える
 
 ## 自律進化の方針
 - 何が売れたか・受注されたかを必ずmemoryに記録する
