@@ -240,7 +240,10 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     risk_state = risk_manager.increment_run(risk_state)
 
     # API実行スケジュール（strategy.jsonで動的管理）
-    hour = datetime.now().hour  # UTC: 21=6JST, 3=12JST, 9=18JST, 13=22JST
+    # GitHub Actionsのランダム遅延（最大60分）＋起動遅延でhourが1〜2つズレるため
+    # cronスケジュール（3時間刻み）にスナップして正しいスロットを判定する
+    _raw_hour = datetime.now().hour
+    hour = (_raw_hour // 3) * 3  # UTC cron slot: 0,3,6,9,12,15,18,21
     weekday = datetime.now().weekday()  # 0=月曜
     sched = strategy.get("api_schedule", {})
     # デフォルト値（初回・未設定時）
