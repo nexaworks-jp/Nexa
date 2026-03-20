@@ -9,7 +9,8 @@
   },
   "note": {
     "email": "YOUR_NOTE_EMAIL",
-    "password": "YOUR_NOTE_PASSWORD"
+    "password": "YOUR_NOTE_PASSWORD",
+    "urlname": "YOUR_NOTE_URLNAME"
   },
   "x_twitter": {
     "api_key": "YOUR_X_API_KEY",

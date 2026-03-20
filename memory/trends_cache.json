@@ -1,16 +1,15 @@
 {
   "topics": [
-    "Claude Code / CodexでKaggle金メダルを取った話｜実際の競技コードの書き方・ツール活用法",
-    "Claude Codeをフル活用！本気で使える厳選Skills/Plugin 8選｜開発効率を上げる実践的な設定ガイド",
-    "AI機能搭載のRSSリーダーを作った｜LLM×Webアプリの実装パターン・API連携の具体例",
-    "GPT-4o / Claude 3.7の最新アップデート機能を仕事で即実践する｜新モデルの価格・スピード・精度比較と活用ガイド"
+    "Claude Codeの実践的な使い方｜Anthropic社員が明かす8つの活用テクニック",
+    "OpenCode – オープンソースAIコーディングエージェントの導入と使い方ガイド",
+    "LangChain.js × RAGで回答精度を劇的に上げる｜チャンク分割テクニック3選の実装方法",
+    "Google AI Studioが「実アプリ開発」に進化｜Antigravity×Firebase統合で何ができるか"
   ],
   "source": "multi",
   "source_counts": {
-    "hackernews": 15,
-    "reddit": 10,
-    "zenn": 10,
+    "hackernews": 12,
+    "zenn": 8,
     "qiita": 10
   },
-  "analyzed_at": "2026-03-19T21:59:23.017336"
+  "analyzed_at": "2026-03-21T07:32:00.555434"
 }

@@ -136,23 +136,8 @@ def _retry_pending_drafts(email: str, password: str) -> int:
             updated = True
             break
 
-        # JSONコードブロック形式の本文を検出して実際の内容を抽出
-        # （content_writerがJSONコードブロックをcontentとして保存してしまうケースに対応）
-        stripped = body.lstrip()
-        if stripped.startswith("```json") or stripped.startswith("```\n{"):
-            try:
-                import json as _json2
-                # ```json ... ``` の中のJSONを取り出す
-                inner = _re.sub(r'^```json?\s*', '', stripped)
-                inner = _re.sub(r'\s*```\s*$', '', inner.strip())
-                parsed = _json2.loads(inner)
-                extracted = parsed.get("content", "")
-                if extracted:
-                    # \n エスケープを実際の改行に
-                    body = extracted.replace("\\n", "\n").replace("\\t", "\t")
-                    print(f"[NotePublisher] JSONコードブロック形式を変換: {len(body)}文字")
-            except Exception:
-                pass
+        # JSONコードブロック形式の本文を修正
+        body = _sanitize_content(body)
 
         article = {
             "title": item["title"],
@@ -282,6 +267,26 @@ created_at: {article.get('created_at', '')}
 
 
 # ==================== 下書き作成・公開の共通ヘルパー ====================
+
+def _sanitize_content(content: str) -> str:
+    """
+    content_writerがJSONコードブロック形式で本文を返してしまうケースを修正する。
+    例: ```json\n{"title": "...", "content": "実際の本文"}\n```
+    """
+    stripped = content.lstrip()
+    if stripped.startswith("```json") or stripped.startswith("```\n{"):
+        try:
+            inner = _re.sub(r'^```json?\s*', '', stripped)
+            inner = _re.sub(r'\s*```\s*$', '', inner.strip())
+            parsed = json.loads(inner)
+            extracted = parsed.get("content", "")
+            if extracted:
+                content = extracted.replace("\\n", "\n").replace("\\t", "\t")
+                print(f"[NotePublisher] JSONコードブロック形式を変換: {len(content)}文字")
+        except Exception:
+            pass
+    return content
+
 
 def _inline_md(text: str) -> str:
     """インラインマークダウン（bold/italic/code/link）をHTMLに変換"""
@@ -795,6 +800,7 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
     title = article.get("title", "")
     content = article.get("content", "")
     price = article.get("price", 0)
+    config_urlname = article.get("_note_urlname", "")
     hashtags = article.get("hashtags", [])
 
     print(f"[NotePublisher] Playwright投稿開始: '{title}'")
@@ -1202,6 +1208,9 @@ def auto_post_with_playwright(article: dict, note_email: str, note_password: str
                         urlname = ""
                     if urlname:
                         current_url = f"https://note.com/{urlname}/n/{note_key}"
+                    elif config_urlname:
+                        current_url = f"https://note.com/{config_urlname}/n/{note_key}"
+                        print(f"[NotePublisher] urlname取得失敗→config値で補完: {config_urlname}")
                     else:
                         current_url = f"https://note.com/n/{note_key}"
             print(f"[NotePublisher] 投稿完了: {current_url}")
@@ -1246,7 +1255,16 @@ def publish(config: dict, articles: list, dry_run: bool = False) -> list:
     password = note_cfg.get("password", "")
     use_playwright = config.get("settings", {}).get("note_auto_post", True)
 
+    note_urlname = note_cfg.get("urlname", "")
+
     for article in articles:
+        # JSONコードブロック形式の本文を事前に修正
+        if article.get("content"):
+            article["content"] = _sanitize_content(article["content"])
+        # urlnameをarticleに付与（URL構築フォールバック用）
+        if note_urlname and not article.get("_note_urlname"):
+            article["_note_urlname"] = note_urlname
+
         if dry_run:
             print(f"[NotePublisher] DRY RUN: '{article.get('title')}' (¥{article.get('price', 0)})")
             results.append({"success": True, "dry_run": True, "title": article.get("title")})
