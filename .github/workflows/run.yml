@@ -61,8 +61,8 @@ jobs:
               casual_hours = [[6, 9, 12][seed % 3]]
           diary_hour = 3
           active_hours = set(casual_hours + [content_hour, diary_hour])
-          hour = now.hour
-          print(f'Current UTC hour: {hour}, Active hours: {sorted(active_hours)}')
+          hour = (now.hour // 3) * 3  # cronは3時間刻み。実行遅延があっても正しいスロットに吸収
+          print(f'Current UTC hour: {now.hour} (snapped to {hour}), Active hours: {sorted(active_hours)}')
           with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
               f.write(f'active={\"true\" if hour in active_hours else \"false\"}\n')
           "

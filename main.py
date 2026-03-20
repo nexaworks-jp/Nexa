@@ -243,7 +243,8 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     import hashlib as _hl
     from datetime import date as _date_cls
     _seed = int(_hl.md5(_date_cls.today().isoformat().encode()).hexdigest(), 16)
-    hour = datetime.utcnow().hour
+    _raw_hour = datetime.utcnow().hour
+    hour = (_raw_hour // 3) * 3  # cronは3時間刻み。実行遅延があっても正しいスロットに吸収
     weekday = datetime.utcnow().weekday()  # 0=月曜
 
     content_hour = [18, 21, 0][_seed % 3]  # UTC 18/21/0 = JST 3/6/9（日毎ランダム）
