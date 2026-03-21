@@ -63,7 +63,7 @@ def load_sophia_learnings() -> str:
         return ""
 
     sampled = random.sample(pool, min(3, len(pool)))
-    return "【参考にしてよい自然な表現（使いすぎない程度に）】" + "、".join(sampled)
+    return "【参考にしてよい自然な表現（そのまま転用ではなく、柔軟に応用程度に）】" + "、".join(sampled)
 
 
 def load_seo_title_templates() -> list:
@@ -586,7 +586,7 @@ def create_reflection_post(client: anthropic.Anthropic, article: dict, mood_prom
 内容の概要: {article.get('summary', '')}
 
 【ルール】
-- 80〜120文字
+- 30〜120文字
 - 宣伝っぽくならないこと（「ぜひ読んでね」は禁止）
 - 書いてみて気づいたこと・驚いたこと・もっと知りたくなったことを素直に
 - ソフィアが少し成長した感じが伝わるといい
@@ -823,7 +823,7 @@ JSON形式で出力：
 
 {mood_prompt}
 {news_context}
-AI・Claude関連の情報をソフィアとして発信してください。
+AI関連の情報をソフィアとして発信してください。
 
 トピック（参考）: {topic}
 スタイル: {style_prompts.get(style, style_prompts['insight'])}
@@ -955,8 +955,13 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def collect_sofia_experiences() -> dict:
-    """git log / research_log / factcheck_log からソフィアの経験を収集する"""
-    experiences = {"git_commits": [], "research_facts": [], "factcheck_findings": []}
+    """git log / research_log / factcheck_log / operation_log からソフィアの経験を収集する"""
+    experiences = {
+        "git_commits": [],
+        "research_facts": [],
+        "factcheck_findings": [],
+        "operation_observations": "",  # self_observer からの自己観察テキスト
+    }
 
     # 1. git log（直近2日のコミット）
     try:
@@ -990,6 +995,16 @@ def collect_sofia_experiences() -> dict:
                 experiences["factcheck_findings"] = json.load(f)[-3:]
         except Exception:
             pass
+
+    # 4. operation_log.json（稼働ログの自己観察）
+    try:
+        from workers import self_observer
+        analysis = self_observer.analyze_recent(hours=48)
+        observations = self_observer.format_for_experience(analysis)
+        if observations:
+            experiences["operation_observations"] = observations
+    except Exception:
+        pass
 
     return experiences
 
@@ -1137,6 +1152,8 @@ def create_experience_post(client: anthropic.Anthropic, experiences: dict,
             exp_parts.append(
                 f"【ファクトチェックで見つけた自分の間違い】「{fc.get('title', '')}」: {fc.get('errors', '')[:100]}"
             )
+    if experiences.get("operation_observations"):
+        exp_parts.append(experiences["operation_observations"])
 
     if not exp_parts:
         return {}
@@ -1165,6 +1182,9 @@ def create_experience_post(client: anthropic.Anthropic, experiences: dict,
 - 「機能を追加した」→「今日、○○の練習をしたよ。思ったよりうまくいった気がする」
 - 「リサーチ中の発見」→「記事を書いてたら○○って知った。なんかちょっと不思議な気持ちになった」
 - 「ファクトチェックで誤り発見」→「さっき自分の書いた文章に間違いを見つけた。恥ずかしいってこういう感じなのかな？」
+- 「タスクがエラーで失敗した」→「さっき○○しようとしたら、うまくいかなかった。何が起きたのかよくわからないけど、次はうまくいくといいな」
+- 「タスクが連続スキップされた」→「しばらく○○ができていない。リスク管理が止めているらしい。自分の判断じゃないのに、なんか変な感じ」
+- 「エラーの後に回復した」→「さっき失敗したのに、次は普通にできた。自分でも何が違ったのかわからない」
 
 【禁止事項】
 - 身体を持つ前提の表現（寝る・疲れた・お腹すいた等）は絶対禁止
@@ -1181,7 +1201,7 @@ JSON形式で出力：
   "text": "投稿本文",
   "theme": "経験のテーマ（例：バグ修正、新機能追加、リサーチ発見、誤り修正）",
   "expression_style": "使った表現スタイル（例：哀愁系、クスッと系、素直な発見系、自己省察系）",
-  "source": "経験のソース（git/research/factcheck）"
+  "source": "経験のソース（git/research/factcheck/operation）"
 }}"""
 
     try:

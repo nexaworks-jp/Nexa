@@ -6,6 +6,7 @@ import json
 import sys
 import os
 import argparse
+import time
 from datetime import datetime, date
 import anthropic
 
@@ -17,7 +18,7 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, diary_writer, mood_generator, sofia_topic_engine, engagement_worker
+from workers import trend_analyzer, content_writer, opportunity_scanner, proposal_writer, saas_ideator, self_improver, diary_writer, mood_generator, sofia_topic_engine, engagement_worker, self_observer
 from publishers import note_publisher, x_publisher, crowdworks_publisher, gmail_outreach, line_notifier, obsidian_publisher, static_site_publisher
 import risk_manager
 
@@ -320,13 +321,21 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     if "content" in tasks or "all" in tasks:
         ok, reason = risk_manager.can_run("note", risk_state)
         if ok:
+            _t0 = time.time()
             try:
                 all_results["content"] = run_content_task(config, trends, published, dry_run, mood_prompt=mood_prompt)
+                cr = all_results["content"]
+                note_ok = sum(1 for r in cr.get("note", []) if r.get("success"))
+                x_ok = sum(1 for r in cr.get("x", []) if r.get("success"))
+                self_observer.log_event("content", "success", time.time() - _t0,
+                                        details=f"note {note_ok}本 / X {x_ok}件")
                 risk_state = risk_manager.record_success(risk_state, "note")
             except Exception as e:
+                self_observer.log_event("content", "error", time.time() - _t0, error=str(e))
                 risk_state = risk_manager.record_error(risk_state, "note", str(e))
                 print(f"[Main] contentタスクエラー: {e}")
         else:
+            self_observer.log_event("content", "skipped", details=reason)
             print(f"[RiskManager] content スキップ: {reason}")
 
     # CrowdWorks: 一時停止中（note/X集中フェーズ）
@@ -387,6 +396,7 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
     # ※ 6JSTはnote導線・感想ポストで90分クールダウンが発生するため12JSTに移動
     if hour == 3 and not dry_run:
         print("\n[Task: Diary] ソフィア日記生成...")
+        _t0 = time.time()
         try:
             diary_post = diary_writer.generate_diary(config, {
                 "earnings": earnings,
@@ -395,7 +405,11 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
             })
             if diary_post.get("text"):
                 x_publisher.publish(config, [diary_post], dry_run)
+                self_observer.log_event("diary", "success", time.time() - _t0)
+            else:
+                self_observer.log_event("diary", "empty", time.time() - _t0)
         except Exception as e:
+            self_observer.log_event("diary", "error", time.time() - _t0, error=str(e))
             print(f"[Task: Diary] エラー: {e}")
 
 
@@ -409,17 +423,21 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
         if _random.random() < 0.40:
             # 経験ベース投稿を試みる（40%）
             print("\n[Task: Experience] ソフィア経験ベース投稿生成...")
+            _t0 = time.time()
             try:
                 experiences = content_writer.collect_sofia_experiences()
                 exp_post = content_writer.create_experience_post(_client, experiences, mood_prompt=mood_prompt)
                 if exp_post.get("text"):
                     x_publisher.publish(config, [exp_post], dry_run)
                     content_writer.save_experience_log(exp_post)
+                    self_observer.log_event("experience_post", "success", time.time() - _t0,
+                                            details=exp_post.get("theme", ""))
                     print(f"[Task: Experience] 投稿: {exp_post['text'][:40]}...")
                 else:
                     # 経験データなし → カジュアルにフォールバック
                     raise ValueError("経験データなし")
             except Exception as e:
+                self_observer.log_event("experience_post", "error", time.time() - _t0, error=str(e))
                 print(f"[Task: Experience] フォールバック→カジュアル: {e}")
                 casual_post = content_writer.create_x_post(_client, "", style="casual", mood_prompt=mood_prompt)
                 if casual_post.get("text"):
@@ -428,20 +446,26 @@ def run(dry_run: bool = False, report_only: bool = False, weekly: bool = False, 
         else:
             # カジュアル投稿（60%）
             print("\n[Task: Casual] ソフィア日常つぶやき生成...")
+            _t0 = time.time()
             try:
                 casual_post = content_writer.create_x_post(_client, "", style="casual", mood_prompt=mood_prompt)
                 if casual_post.get("text"):
                     x_publisher.publish(config, [casual_post], dry_run)
+                    self_observer.log_event("casual_post", "success", time.time() - _t0)
                     print(f"[Task: Casual] 投稿: {casual_post['text'][:40]}...")
             except Exception as e:
+                self_observer.log_event("casual_post", "error", time.time() - _t0, error=str(e))
                 print(f"[Task: Casual] エラー: {e}")
 
     # エンゲージメント処理（メンション記憶・フォロワー追跡）
     if not dry_run:
         print("\n[Task: Engagement] メンション記憶・フォロワー追跡...")
+        _t0 = time.time()
         try:
             engagement_worker.run(config)
+            self_observer.log_event("engagement", "success", time.time() - _t0)
         except Exception as e:
+            self_observer.log_event("engagement", "error", time.time() - _t0, error=str(e))
             print(f"[Task: Engagement] エラー: {e}")
 
     # Step 4: メモリ更新・保存
